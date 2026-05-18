@@ -23,7 +23,7 @@ impl Command for HooksCommand {
     }
 
     fn description(&self) -> &str {
-        "Manage hooks"
+        "Show hooks status"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,17 @@ impl Command for HooksCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /hooks command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let hooks = &state.session_hooks_state;
+        let mut output = String::from("Hooks status:\n\n");
+        output.push_str(&format!("  Registered hooks: {}\n", hooks.registered_hooks.len()));
+        for hook in &hooks.registered_hooks {
+            output.push_str(&format!("    - {}\n", hook));
+        }
+        if hooks.registered_hooks.is_empty() {
+            output.push_str("  No hooks registered.\n");
+        }
+        CommandResult::text(output)
     }
 }

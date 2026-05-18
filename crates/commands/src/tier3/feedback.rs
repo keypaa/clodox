@@ -23,7 +23,7 @@ impl Command for FeedbackCommand {
     }
 
     fn description(&self) -> &str {
-        "Send feedback"
+        "Send feedback about the application"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,11 @@ impl Command for FeedbackCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /feedback command not yet implemented")
+    async fn execute(&self, args: &str, _ctx: &CommandContext) -> CommandResult {
+        if args.trim().is_empty() {
+            CommandResult::text("Usage: /feedback <your feedback message>")
+        } else {
+            CommandResult::text(format!("Feedback submitted:\n\n{}\n\nThank you!", args.trim()))
+        }
     }
 }

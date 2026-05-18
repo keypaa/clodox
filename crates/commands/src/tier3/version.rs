@@ -27,7 +27,7 @@ impl Command for VersionCommand {
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["v"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,6 @@ impl Command for VersionCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /version command not yet implemented")
+        CommandResult::text("claude-code-rs v0.1.0\nRust port of Claude Code")
     }
 }

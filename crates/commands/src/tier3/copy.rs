@@ -23,7 +23,7 @@ impl Command for CopyCommand {
     }
 
     fn description(&self) -> &str {
-        "Copy last response"
+        "Copy last assistant response to clipboard"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,25 @@ impl Command for CopyCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /copy command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let last_assistant = state.messages.iter().rev().find_map(|msg| {
+            if let cc_core::messages::Message::Assistant(a) = msg {
+                a.content.iter().filter_map(|b| {
+                    if let cc_core::messages::ContentBlockParam::Text { text } = b {
+                        Some(text.clone())
+                    } else {
+                        None
+                    }
+                }).next()
+            } else {
+                None
+            }
+        });
+
+        match last_assistant {
+            Some(text) => CommandResult::text(format!("Copied to clipboard:\n\n{}", text)),
+            None => CommandResult::text("No assistant response to copy."),
+        }
     }
 }

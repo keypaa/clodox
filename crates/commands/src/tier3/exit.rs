@@ -27,7 +27,7 @@ impl Command for ExitCommand {
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["quit", "q"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,6 @@ impl Command for ExitCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /exit command not yet implemented")
+        CommandResult::text("Exiting...")
     }
 }

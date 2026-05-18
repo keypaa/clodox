@@ -23,7 +23,7 @@ impl Command for BriefCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle brief output"
+        "Toggle brief output mode"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,10 @@ impl Command for BriefCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /brief command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let mut state = ctx.state.write().expect("state lock poisoned");
+        state.brief_mode = !state.brief_mode;
+        let mode = if state.brief_mode { "enabled" } else { "disabled" };
+        CommandResult::text(format!("Brief mode {}", mode))
     }
 }

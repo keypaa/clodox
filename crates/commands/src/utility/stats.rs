@@ -23,7 +23,7 @@ impl Command for StatsCommand {
     }
 
     fn description(&self) -> &str {
-        "Show session statistics"
+        "Show detailed session statistics"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,20 @@ impl Command for StatsCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /stats command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let total_tokens = state.token_counts.input_tokens
+            + state.token_counts.output_tokens
+            + state.token_counts.cache_read_tokens
+            + state.token_counts.cache_creation_tokens;
+        let mut output = String::from("Session statistics:\n\n");
+        output.push_str(&format!("  Input tokens:       {}\n", state.token_counts.input_tokens));
+        output.push_str(&format!("  Output tokens:      {}\n", state.token_counts.output_tokens));
+        output.push_str(&format!("  Cache read:         {}\n", state.token_counts.cache_read_tokens));
+        output.push_str(&format!("  Cache creation:     {}\n", state.token_counts.cache_creation_tokens));
+        output.push_str(&format!("  Total tokens:       {}\n", total_tokens));
+        output.push_str(&format!("  Total cost:         ${:.4}\n", state.total_cost_usd));
+        output.push_str(&format!("  Messages sent:      {}\n", state.messages.len()));
+        CommandResult::text(output)
     }
 }

@@ -23,7 +23,7 @@ impl Command for ShareCommand {
     }
 
     fn description(&self) -> &str {
-        "Share a conversation"
+        "Share the current conversation"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,9 @@ impl Command for ShareCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /share command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let msg_count = state.messages.len();
+        CommandResult::text(format!("Sharing conversation with {} messages...\n(Note: sharing service not yet implemented)", msg_count))
     }
 }

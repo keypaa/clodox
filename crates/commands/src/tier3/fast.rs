@@ -34,7 +34,10 @@ impl Command for FastCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /fast command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let mut state = ctx.state.write().expect("state lock poisoned");
+        state.fast_mode = !state.fast_mode;
+        let mode = if state.fast_mode { "enabled" } else { "disabled" };
+        CommandResult::text(format!("Fast mode {}", mode))
     }
 }

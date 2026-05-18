@@ -35,6 +35,6 @@ impl Command for ColorCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /color command not yet implemented")
+        CommandResult::text("Color output is always enabled in TUI mode. Use terminal settings to disable.")
     }
 }

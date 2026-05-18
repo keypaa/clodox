@@ -23,7 +23,7 @@ impl Command for VimCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle vim mode"
+        "Toggle vim mode for the prompt input"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,10 @@ impl Command for VimCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /vim command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let mut state = ctx.state.write().expect("state lock poisoned");
+        state.vim_mode = !state.vim_mode;
+        let mode = if state.vim_mode { "enabled" } else { "disabled" };
+        CommandResult::text(format!("Vim mode {}", mode))
     }
 }

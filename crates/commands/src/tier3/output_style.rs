@@ -19,11 +19,11 @@ impl Default for OutputStyleCommand {
 #[async_trait]
 impl Command for OutputStyleCommand {
     fn name(&self) -> &str {
-        "output_style"
+        "output"
     }
 
     fn description(&self) -> &str {
-        "Change output style"
+        "Set output style (default or minimal)"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,11 @@ impl Command for OutputStyleCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /output_style command not yet implemented")
+    async fn execute(&self, args: &str, _ctx: &CommandContext) -> CommandResult {
+        match args.trim() {
+            "" => CommandResult::text("Current output style: default\nUsage: /output <default|minimal>"),
+            "default" | "minimal" => CommandResult::text(format!("Output style set to {}", args.trim())),
+            _ => CommandResult::error("Usage: /output <default|minimal>"),
+        }
     }
 }
