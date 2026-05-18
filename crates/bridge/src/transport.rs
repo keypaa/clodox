@@ -270,3 +270,163 @@ impl TransportFactory {
         Transport::WebSocket(transport)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transport_protocol_display() {
+        assert_eq!(TransportProtocol::Http.to_string(), "HTTP");
+        assert_eq!(TransportProtocol::WebSocket.to_string(), "WebSocket");
+    }
+
+    #[test]
+    fn test_transport_message_new() {
+        let msg = TransportMessage::new(b"hello".to_vec());
+        assert!(!msg.id.is_empty());
+        assert_eq!(msg.payload, b"hello");
+        assert!(msg.metadata.is_empty());
+        assert!(msg.timestamp > 0);
+    }
+
+    #[test]
+    fn test_transport_message_with_metadata() {
+        let msg = TransportMessage::new(b"data".to_vec())
+            .with_metadata("key", "value");
+        assert_eq!(msg.metadata.get("key"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn test_transport_message_json_roundtrip() {
+        let msg = TransportMessage::new(b"payload".to_vec())
+            .with_metadata("type", "test");
+        let json = msg.to_json().unwrap();
+        let decoded = TransportMessage::from_json(&json).unwrap();
+        assert_eq!(decoded.payload, b"payload");
+        assert_eq!(decoded.metadata.get("type"), Some(&"test".to_string()));
+    }
+
+    #[test]
+    fn test_transport_message_json_invalid() {
+        let result = TransportMessage::from_json(b"not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_transport_factory_create_http() {
+        let transport = TransportFactory::create("https://example.com/api");
+        assert!(matches!(transport.protocol(), TransportProtocol::Http));
+    }
+
+    #[test]
+    fn test_transport_factory_create_websocket() {
+        let transport = TransportFactory::create("ws://example.com/ws");
+        assert!(matches!(transport.protocol(), TransportProtocol::WebSocket));
+    }
+
+    #[test]
+    fn test_transport_factory_create_wss() {
+        let transport = TransportFactory::create("wss://example.com/ws");
+        assert!(matches!(transport.protocol(), TransportProtocol::WebSocket));
+    }
+
+    #[test]
+    fn test_transport_factory_create_http_explicit() {
+        let transport = TransportFactory::create_http();
+        assert!(matches!(transport.protocol(), TransportProtocol::Http));
+    }
+
+    #[test]
+    fn test_transport_factory_create_websocket_explicit() {
+        let transport = TransportFactory::create_websocket();
+        assert!(matches!(transport.protocol(), TransportProtocol::WebSocket));
+    }
+
+    #[tokio::test]
+    async fn test_http_transport_initial_state() {
+        let transport = HttpTransport::new();
+        assert_eq!(transport.get_state().await, TransportState::Idle);
+        assert_eq!(transport.protocol(), TransportProtocol::Http);
+    }
+
+    #[tokio::test]
+    async fn test_http_transport_connect_invalid_url() {
+        let transport = HttpTransport::new();
+        let result = transport.connect("http://localhost:99999").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_http_transport_disconnect() {
+        let transport = HttpTransport::new();
+        let result = transport.disconnect().await;
+        assert!(result.is_ok());
+        assert_eq!(transport.get_state().await, TransportState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_websocket_transport_initial_state() {
+        let (transport, _msg_rx) = WebSocketTransport::new();
+        assert_eq!(transport.get_state().await, TransportState::Idle);
+        assert_eq!(transport.protocol(), TransportProtocol::WebSocket);
+    }
+
+    #[tokio::test]
+    async fn test_websocket_transport_connect() {
+        let (transport, _msg_rx) = WebSocketTransport::new();
+        let result = transport.connect("ws://localhost:8080").await;
+        assert!(result.is_ok());
+        assert_eq!(transport.get_state().await, TransportState::Connected);
+    }
+
+    #[tokio::test]
+    async fn test_websocket_transport_disconnect() {
+        let (transport, _msg_rx) = WebSocketTransport::new();
+        transport.connect("ws://localhost:8080").await.unwrap();
+        let result = transport.disconnect().await;
+        assert!(result.is_ok());
+        assert_eq!(transport.get_state().await, TransportState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_websocket_transport_send() {
+        let (transport, _msg_rx) = WebSocketTransport::new();
+        transport.connect("ws://localhost:8080").await.unwrap();
+        let msg = TransportMessage::new(b"test".to_vec());
+        // Send will fail because the receiver side of write_tx is dropped in new()
+        let result = transport.send(&msg).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Write channel closed"));
+    }
+
+    #[tokio::test]
+    async fn test_transport_wrapper_http() {
+        let transport = Transport::Http(HttpTransport::new());
+        assert_eq!(transport.get_state().await, TransportState::Idle);
+        assert_eq!(transport.protocol(), TransportProtocol::Http);
+    }
+
+    #[tokio::test]
+    async fn test_transport_wrapper_websocket() {
+        let (ws, _) = WebSocketTransport::new();
+        let transport = Transport::WebSocket(ws);
+        assert_eq!(transport.get_state().await, TransportState::Idle);
+        assert_eq!(transport.protocol(), TransportProtocol::WebSocket);
+    }
+
+    #[tokio::test]
+    async fn test_transport_is_connected() {
+        let transport = Transport::Http(HttpTransport::new());
+        assert!(!transport.is_connected().await);
+    }
+
+    #[tokio::test]
+    async fn test_transport_send_not_connected() {
+        let transport = Transport::Http(HttpTransport::new());
+        let msg = TransportMessage::new(b"test".to_vec());
+        let result = transport.send(&msg).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not connected"));
+    }
+}

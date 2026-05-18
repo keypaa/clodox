@@ -300,3 +300,285 @@ pub fn decision_to_result(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_permission_decision_display() {
+        assert_eq!(PermissionDecision::Allow.to_string(), "allow");
+        assert_eq!(PermissionDecision::Deny.to_string(), "deny");
+        assert_eq!(PermissionDecision::Ask.to_string(), "ask");
+    }
+
+    #[test]
+    fn test_decision_to_result_allow() {
+        let input = serde_json::json!({"command": "ls"});
+        let result = decision_to_result(PermissionDecision::Allow, input.clone(), None);
+        assert!(matches!(result, PermissionResult::Allow { .. }));
+        if let PermissionResult::Allow { updated_input, .. } = result {
+            assert_eq!(updated_input, Some(input));
+        }
+    }
+
+    #[test]
+    fn test_decision_to_result_deny() {
+        let input = serde_json::json!({"command": "rm -rf /"});
+        let result = decision_to_result(PermissionDecision::Deny, input, Some("Too dangerous".to_string()));
+        assert!(matches!(result, PermissionResult::Deny { .. }));
+        if let PermissionResult::Deny { message, .. } = result {
+            assert_eq!(message, "Too dangerous");
+        }
+    }
+
+    #[test]
+    fn test_decision_to_result_deny_default_message() {
+        let input = serde_json::json!({});
+        let result = decision_to_result(PermissionDecision::Deny, input, None);
+        if let PermissionResult::Deny { message, .. } = result {
+            assert_eq!(message, "Permission denied");
+        }
+    }
+
+    #[test]
+    fn test_decision_to_result_ask() {
+        let input = serde_json::json!({"command": "npm install"});
+        let result = decision_to_result(PermissionDecision::Ask, input.clone(), None);
+        assert!(matches!(result, PermissionResult::Ask { .. }));
+        if let PermissionResult::Ask { updated_input, .. } = result {
+            assert_eq!(updated_input, Some(input));
+        }
+    }
+
+    #[test]
+    fn test_is_read_only_tool() {
+        assert!(is_read_only_tool("Read", &serde_json::json!({})));
+        assert!(is_read_only_tool("Grep", &serde_json::json!({})));
+        assert!(is_read_only_tool("Glob", &serde_json::json!({})));
+        assert!(is_read_only_tool("web_fetch", &serde_json::json!({})));
+        assert!(is_read_only_tool("web_search", &serde_json::json!({})));
+        assert!(!is_read_only_tool("Bash", &serde_json::json!({})));
+        assert!(!is_read_only_tool("Write", &serde_json::json!({})));
+    }
+
+    #[test]
+    fn test_is_edit_tool() {
+        assert!(is_edit_tool("Edit"));
+        assert!(is_edit_tool("Write"));
+        assert!(!is_edit_tool("Read"));
+        assert!(!is_edit_tool("Bash"));
+    }
+
+    #[tokio::test]
+    async fn test_auto_allow_rule() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.add_auto_allow_rule("Read").await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-1".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Read".to_string(),
+            tool_input: serde_json::json!({"path": "file.txt"}),
+            risk_level: "low".to_string(),
+            permission_mode: "default".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_auto_deny_rule() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.add_auto_deny_rule("Bash").await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-2".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "rm -rf /"}),
+            risk_level: "high".to_string(),
+            permission_mode: "default".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Deny);
+    }
+
+    #[tokio::test]
+    async fn test_wildcard_allow_rule() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.add_auto_allow_rule("*").await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-3".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "AnyTool".to_string(),
+            tool_input: serde_json::json!({}),
+            risk_level: "low".to_string(),
+            permission_mode: "default".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_bypass_permissions_mode() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.set_default_mode(PermissionMode::BypassPermissions).await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-4".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            risk_level: "low".to_string(),
+            permission_mode: "bypass".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_dont_ask_mode_read_only() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.set_default_mode(PermissionMode::DontAsk).await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-5".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Read".to_string(),
+            tool_input: serde_json::json!({"path": "file.txt"}),
+            risk_level: "low".to_string(),
+            permission_mode: "dont_ask".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_accept_edits_mode() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.set_default_mode(PermissionMode::AcceptEdits).await;
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-6".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Write".to_string(),
+            tool_input: serde_json::json!({"path": "file.txt", "content": "hello"}),
+            risk_level: "medium".to_string(),
+            permission_mode: "accept_edits".to_string(),
+        };
+
+        let decision = callbacks.handle_request(request).await.unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_respond_to_permission_request() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = Arc::new(PermissionCallbacks::new(tx));
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-7".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            risk_level: "low".to_string(),
+            permission_mode: "default".to_string(),
+        };
+
+        let callbacks_clone = callbacks.clone();
+        let handle = tokio::spawn(async move {
+            callbacks_clone.handle_request(request).await
+        });
+
+        let incoming = rx.recv().await.unwrap();
+        assert_eq!(incoming.request_id, "req-7");
+        callbacks.respond("req-7", PermissionDecision::Allow).await.unwrap();
+
+        let decision = handle.await.unwrap().unwrap();
+        assert_eq!(decision, PermissionDecision::Allow);
+    }
+
+    #[tokio::test]
+    async fn test_respond_to_nonexistent_request() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        let result = callbacks.respond("nonexistent", PermissionDecision::Allow).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_add_and_remove_allow_rule() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.add_auto_allow_rule("Bash").await;
+        assert_eq!(callbacks.get_auto_allow_rules().await, vec!["Bash"]);
+        callbacks.remove_auto_allow_rule("Bash").await;
+        assert!(callbacks.get_auto_allow_rules().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_add_and_remove_deny_rule() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.add_auto_deny_rule("Write").await;
+        assert_eq!(callbacks.get_auto_deny_rules().await, vec!["Write"]);
+        callbacks.remove_auto_deny_rule("Write").await;
+        assert!(callbacks.get_auto_deny_rules().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_pending_count() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        assert_eq!(callbacks.pending_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_clear_pending() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        callbacks.clear_pending().await;
+        assert_eq!(callbacks.pending_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_default_mode() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(10);
+        let callbacks = PermissionCallbacks::new(tx);
+        assert_eq!(callbacks.get_default_mode().await, PermissionMode::Default);
+        callbacks.set_default_mode(PermissionMode::Plan).await;
+        assert_eq!(callbacks.get_default_mode().await, PermissionMode::Plan);
+    }
+
+    #[tokio::test]
+    async fn test_channel_closed_returns_deny() {
+        let (tx, rx) = tokio::sync::mpsc::channel(10);
+        drop(rx);
+        let callbacks = PermissionCallbacks::new(tx);
+
+        let request = PermissionCallbackRequest {
+            request_id: "req-8".to_string(),
+            session_id: "sess-1".to_string(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            risk_level: "low".to_string(),
+            permission_mode: "default".to_string(),
+        };
+
+        let result = callbacks.handle_request(request).await;
+        assert!(result.is_err());
+    }
+}

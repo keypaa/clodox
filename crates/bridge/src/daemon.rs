@@ -303,3 +303,211 @@ impl DaemonProcess {
         *self.state.read().await == DaemonState::Running
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_pid_file() -> PathBuf {
+        let id = std::process::id();
+        let thread_id = format!("{:?}", std::thread::current().id());
+        PathBuf::from(format!("/tmp/test-daemon-{}-{}.pid", id, thread_id))
+    }
+
+    fn test_config() -> DaemonConfig {
+        DaemonConfig {
+            pid_file: unique_pid_file(),
+            log_file: PathBuf::from("/tmp/test-daemon.log"),
+            working_dir: PathBuf::from("/tmp"),
+            port: 9876,
+            max_sessions: 5,
+            idle_timeout_secs: 1,
+        }
+    }
+
+    #[test]
+    fn test_daemon_config_default() {
+        let config = DaemonConfig::default();
+        assert_eq!(config.port, 8765);
+        assert_eq!(config.max_sessions, 10);
+        assert_eq!(config.idle_timeout_secs, 3600);
+    }
+
+    #[tokio::test]
+    async fn test_new_daemon_is_stopped() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        assert_eq!(daemon.get_state().await, DaemonState::Stopped);
+        assert!(!daemon.is_running().await);
+        assert!(daemon.get_pid().await.is_none());
+        assert_eq!(daemon.session_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_start_daemon() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        assert_eq!(daemon.get_state().await, DaemonState::Running);
+        assert!(daemon.is_running().await);
+        assert!(daemon.get_pid().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_start_already_running() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        let result = daemon.start().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already running"));
+    }
+
+    #[tokio::test]
+    async fn test_stop_daemon() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.stop().await.unwrap();
+        assert_eq!(daemon.get_state().await, DaemonState::Stopped);
+        assert!(!daemon.is_running().await);
+        assert!(daemon.get_pid().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stop_not_running() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        let result = daemon.stop().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not running"));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_session() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        let pid = daemon.spawn_session("sess-1", "/tmp", "claude-sonnet-4").await.unwrap();
+        assert!(pid > 0);
+        assert_eq!(daemon.session_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_session_not_running() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        let result = daemon.spawn_session("sess-1", "/tmp", "claude-sonnet-4").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not running"));
+    }
+
+    #[tokio::test]
+    async fn test_max_sessions() {
+        let mut config = test_config();
+        config.max_sessions = 2;
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+        daemon.spawn_session("s2", "/tmp", "model").await.unwrap();
+        let result = daemon.spawn_session("s3", "/tmp", "model").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Maximum sessions"));
+    }
+
+    #[tokio::test]
+    async fn test_kill_session() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+        daemon.kill_session("s1").await.unwrap();
+        assert_eq!(daemon.session_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_kill_nonexistent_session() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        let result = daemon.kill_session("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_activity() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+        daemon.update_activity("s1").await;
+        let sessions = daemon.get_sessions().await;
+        assert_eq!(sessions.len(), 1);
+        assert!(!sessions[0].is_idle);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_idle_sessions() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+
+        // Wait for idle timeout
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let killed = daemon.cleanup_idle_sessions().await;
+        assert_eq!(killed.len(), 1);
+        assert_eq!(killed[0], "s1");
+        assert_eq!(daemon.session_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_stop_kills_all_sessions() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+        daemon.spawn_session("s2", "/tmp", "model").await.unwrap();
+        daemon.stop().await.unwrap();
+        assert_eq!(daemon.session_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_sessions() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        daemon.start().await.unwrap();
+        daemon.spawn_session("s1", "/tmp", "model").await.unwrap();
+        let sessions = daemon.get_sessions().await;
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "s1");
+        assert_eq!(sessions[0].working_dir, "/tmp");
+        assert_eq!(sessions[0].model, "model");
+    }
+
+    #[tokio::test]
+    async fn test_get_config() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config.clone());
+        assert_eq!(daemon.get_config().port, config.port);
+        assert_eq!(daemon.get_config().max_sessions, config.max_sessions);
+    }
+
+    #[tokio::test]
+    async fn test_is_already_running_no_pid_file() {
+        let config = DaemonConfig {
+            pid_file: PathBuf::from("/tmp/nonexistent-daemon-12345.pid"),
+            ..DaemonConfig::default()
+        };
+        let daemon = DaemonProcess::new(config);
+        assert!(!daemon.is_already_running().await);
+    }
+
+    #[tokio::test]
+    async fn test_get_error_initially_none() {
+        let config = test_config();
+        let daemon = DaemonProcess::new(config);
+        assert!(daemon.get_error().await.is_none());
+    }
+}

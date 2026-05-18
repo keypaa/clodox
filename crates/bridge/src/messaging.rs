@@ -323,3 +323,290 @@ impl Default for MessageQueue {
         Self::new(1000)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bridge_message_type_name() {
+        assert_eq!(BridgeMessage::heartbeat().type_name(), "heartbeat");
+        assert_eq!(BridgeMessage::error("404", "Not found").type_name(), "error");
+        assert_eq!(BridgeMessage::user_message("Hello").type_name(), "user_message");
+
+        let init = BridgeMessage::Init {
+            session_id: "s1".to_string(),
+            environment_id: None,
+            auth_token: None,
+        };
+        assert_eq!(init.type_name(), "init");
+
+        let custom = BridgeMessage::Custom {
+            name: "my_custom".to_string(),
+            payload: serde_json::json!({}),
+        };
+        assert_eq!(custom.type_name(), "my_custom");
+    }
+
+    #[test]
+    fn test_bridge_message_serialize_deserialize() {
+        let msg = BridgeMessage::UserMessage {
+            message_id: "msg-1".to_string(),
+            content: "Hello".to_string(),
+            metadata: HashMap::new(),
+        };
+        let bytes = msg.to_bytes().unwrap();
+        let decoded = BridgeMessage::from_bytes(&bytes).unwrap();
+        match decoded {
+            BridgeMessage::UserMessage { content, .. } => assert_eq!(content, "Hello"),
+            _ => panic!("Expected UserMessage"),
+        }
+    }
+
+    #[test]
+    fn test_bridge_message_init_serialize() {
+        let msg = BridgeMessage::Init {
+            session_id: "sess-1".to_string(),
+            environment_id: Some("env-1".to_string()),
+            auth_token: Some("token".to_string()),
+        };
+        let bytes = msg.to_bytes().unwrap();
+        let decoded = BridgeMessage::from_bytes(&bytes).unwrap();
+        match decoded {
+            BridgeMessage::Init { session_id, .. } => assert_eq!(session_id, "sess-1"),
+            _ => panic!("Expected Init"),
+        }
+    }
+
+    #[test]
+    fn test_bridge_message_tool_use_serialize() {
+        let msg = BridgeMessage::ToolUse {
+            tool_use_id: "tu-1".to_string(),
+            tool_name: "Bash".to_string(),
+            input: serde_json::json!({"command": "ls"}),
+        };
+        let bytes = msg.to_bytes().unwrap();
+        let decoded = BridgeMessage::from_bytes(&bytes).unwrap();
+        match decoded {
+            BridgeMessage::ToolUse { tool_name, input, .. } => {
+                assert_eq!(tool_name, "Bash");
+                assert_eq!(input["command"], "ls");
+            }
+            _ => panic!("Expected ToolUse"),
+        }
+    }
+
+    #[test]
+    fn test_heartbeat_message() {
+        let msg = BridgeMessage::heartbeat();
+        match msg {
+            BridgeMessage::Heartbeat { timestamp } => assert!(timestamp > 0),
+            _ => panic!("Expected Heartbeat"),
+        }
+    }
+
+    #[test]
+    fn test_error_message() {
+        let msg = BridgeMessage::error("ERR_001", "Something went wrong");
+        match msg {
+            BridgeMessage::Error { error_code, message, details } => {
+                assert_eq!(error_code, "ERR_001");
+                assert_eq!(message, "Something went wrong");
+                assert!(details.is_none());
+            }
+            _ => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_user_message_factory() {
+        let msg = BridgeMessage::user_message("Test content");
+        match msg {
+            BridgeMessage::UserMessage { content, metadata, .. } => {
+                assert_eq!(content, "Test content");
+                assert!(metadata.is_empty());
+            }
+            _ => panic!("Expected UserMessage"),
+        }
+    }
+
+    #[test]
+    fn test_message_codec_encode_decode() {
+        let msg = BridgeMessage::Heartbeat { timestamp: 12345 };
+        let framed = MessageCodec::encode(&msg).unwrap();
+        assert!(framed.len() > 4);
+        let (decoded, bytes_read) = MessageCodec::decode(&framed).unwrap();
+        assert_eq!(bytes_read, framed.len());
+        match decoded {
+            BridgeMessage::Heartbeat { timestamp } => assert_eq!(timestamp, 12345),
+            _ => panic!("Expected Heartbeat"),
+        }
+    }
+
+    #[test]
+    fn test_message_codec_decode_incomplete_frame() {
+        let result = MessageCodec::decode(&[0, 0, 0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("at least 4 bytes"));
+    }
+
+    #[test]
+    fn test_message_codec_decode_truncated_payload() {
+        let payload = b"short";
+        let len = (payload.len() + 100) as u32;
+        let mut data = len.to_be_bytes().to_vec();
+        data.extend_from_slice(payload);
+        let result = MessageCodec::decode(&data);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Incomplete frame"));
+    }
+
+    #[test]
+    fn test_message_codec_text_encode_decode() {
+        let msg = BridgeMessage::Disconnect {
+            reason: "timeout".to_string(),
+        };
+        let text = MessageCodec::encode_text(&msg).unwrap();
+        let decoded = MessageCodec::decode_text(&text).unwrap();
+        match decoded {
+            BridgeMessage::Disconnect { reason } => assert_eq!(reason, "timeout"),
+            _ => panic!("Expected Disconnect"),
+        }
+    }
+
+    #[test]
+    fn test_message_codec_text_decode_invalid() {
+        let result = MessageCodec::decode_text("not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_message_dispatcher_type_specific_handler() {
+        struct CountingHandler {
+            count: std::sync::atomic::AtomicUsize,
+        }
+        impl MessageHandler for CountingHandler {
+            fn handle(&self, _message: &BridgeMessage) {
+                self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+
+        let mut dispatcher = MessageDispatcher::new();
+        let handler = CountingHandler {
+            count: std::sync::atomic::AtomicUsize::new(0),
+        };
+        dispatcher.register_handler("heartbeat", handler);
+
+        let msg = BridgeMessage::heartbeat();
+        dispatcher.dispatch(&msg);
+        assert_eq!(dispatcher.handler_count("heartbeat"), 1);
+    }
+
+    #[test]
+    fn test_message_dispatcher_default_handler() {
+        struct CountingHandler {
+            count: std::sync::atomic::AtomicUsize,
+        }
+        impl MessageHandler for CountingHandler {
+            fn handle(&self, _message: &BridgeMessage) {
+                self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+
+        let mut dispatcher = MessageDispatcher::new();
+        let handler = CountingHandler {
+            count: std::sync::atomic::AtomicUsize::new(0),
+        };
+        dispatcher.register_default_handler(handler);
+
+        dispatcher.dispatch(&BridgeMessage::heartbeat());
+        dispatcher.dispatch(&BridgeMessage::error("e", "m"));
+        assert_eq!(dispatcher.total_handler_count(), 1);
+    }
+
+    #[test]
+    fn test_message_queue_push_pop() {
+        let mut queue = MessageQueue::new(10);
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        queue.push(BridgeMessage::error("e", "m")).unwrap();
+        assert_eq!(queue.len(), 2);
+
+        let msg = queue.pop().unwrap();
+        assert_eq!(msg.type_name(), "heartbeat");
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_message_queue_full() {
+        let mut queue = MessageQueue::new(2);
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        let result = queue.push(BridgeMessage::heartbeat());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("full"));
+    }
+
+    #[test]
+    fn test_message_queue_peek() {
+        let mut queue = MessageQueue::new(10);
+        assert!(queue.peek().is_none());
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        assert!(queue.peek().is_some());
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_message_queue_drain() {
+        let mut queue = MessageQueue::new(10);
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        queue.push(BridgeMessage::error("e", "m")).unwrap();
+        let msgs = queue.drain();
+        assert_eq!(msgs.len(), 2);
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_message_queue_clear() {
+        let mut queue = MessageQueue::new(10);
+        queue.push(BridgeMessage::heartbeat()).unwrap();
+        queue.clear();
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_message_queue_default() {
+        let queue = MessageQueue::default();
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_bridge_message_permission_request() {
+        let msg = BridgeMessage::PermissionRequest {
+            request_id: "req-1".to_string(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "rm -rf /"}),
+            risk_level: "high".to_string(),
+        };
+        let bytes = msg.to_bytes().unwrap();
+        let decoded = BridgeMessage::from_bytes(&bytes).unwrap();
+        match decoded {
+            BridgeMessage::PermissionRequest { risk_level, .. } => assert_eq!(risk_level, "high"),
+            _ => panic!("Expected PermissionRequest"),
+        }
+    }
+
+    #[test]
+    fn test_bridge_message_stream_event() {
+        let msg = BridgeMessage::StreamEvent {
+            event_id: "ev-1".to_string(),
+            event_type: "text_delta".to_string(),
+            data: serde_json::json!({"text": "Hello"}),
+        };
+        let bytes = msg.to_bytes().unwrap();
+        let decoded = BridgeMessage::from_bytes(&bytes).unwrap();
+        match decoded {
+            BridgeMessage::StreamEvent { event_type, .. } => assert_eq!(event_type, "text_delta"),
+            _ => panic!("Expected StreamEvent"),
+        }
+    }
+}

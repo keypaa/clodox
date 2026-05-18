@@ -320,3 +320,194 @@ pub struct SessionStatus {
     pub model: String,
     pub working_dir: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(session_id: &str) -> SessionConfig {
+        SessionConfig {
+            session_id: session_id.to_string(),
+            working_dir: "/tmp".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            api_key: "test-key".to_string(),
+            permission_mode: "default".to_string(),
+            max_tokens: 100_000,
+            timeout_secs: 300,
+            environment: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_runner_default() {
+        let runner = SessionRunner::default();
+        assert_eq!(runner.max_concurrent, 5);
+    }
+
+    #[tokio::test]
+    async fn test_new_runner_is_idle() {
+        let runner = SessionRunner::new(3);
+        assert_eq!(runner.get_state().await, RunnerState::Idle);
+        assert!(runner.is_idle().await);
+        assert_eq!(runner.active_count().await, 0);
+        assert_eq!(runner.completed_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_start_session() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("sess-1");
+        let session_id = runner.start_session(config).await.unwrap();
+        assert_eq!(session_id, "sess-1");
+        assert_eq!(runner.get_state().await, RunnerState::Running);
+        assert_eq!(runner.active_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_session() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("sess-2");
+        runner.start_session(config).await.unwrap();
+        let result = runner.wait_for_session("sess-2").await.unwrap();
+        assert!(result.success);
+        assert_eq!(result.session_id, "sess-2");
+        assert!(result.duration_ms > 0);
+        assert_eq!(runner.completed_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_nonexistent_session() {
+        let runner = SessionRunner::new(3);
+        let result = runner.wait_for_session("nonexistent").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_stop_session() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("sess-3");
+        runner.start_session(config).await.unwrap();
+        runner.stop_session("sess-3").await.unwrap();
+        assert_eq!(runner.active_count().await, 0);
+        assert_eq!(runner.completed_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_stop_nonexistent_session() {
+        let runner = SessionRunner::new(3);
+        let result = runner.stop_session("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_stop_all() {
+        let runner = SessionRunner::new(5);
+        runner.start_session(test_config("s1")).await.unwrap();
+        runner.start_session(test_config("s2")).await.unwrap();
+        runner.start_session(test_config("s3")).await.unwrap();
+        assert_eq!(runner.active_count().await, 3);
+        runner.stop_all().await;
+        assert_eq!(runner.active_count().await, 0);
+        assert!(runner.is_idle().await);
+    }
+
+    #[tokio::test]
+    async fn test_max_concurrent_sessions() {
+        let runner = SessionRunner::new(2);
+        runner.start_session(test_config("s1")).await.unwrap();
+        runner.start_session(test_config("s2")).await.unwrap();
+        let result = runner.start_session(test_config("s3")).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Maximum concurrent"));
+    }
+
+    #[tokio::test]
+    async fn test_pause_and_resume() {
+        let runner = SessionRunner::new(3);
+        runner.pause().await;
+        assert_eq!(runner.get_state().await, RunnerState::Paused);
+        runner.resume().await;
+        assert_eq!(runner.get_state().await, RunnerState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_pause_sets_paused_state() {
+        let runner = SessionRunner::new(3);
+        runner.pause().await;
+        assert_eq!(runner.get_state().await, RunnerState::Paused);
+        runner.resume().await;
+    }
+
+    #[tokio::test]
+    async fn test_stop_all_sets_idle() {
+        let runner = SessionRunner::new(3);
+        runner.start_session(test_config("s1")).await.unwrap();
+        runner.stop_all().await;
+        assert_eq!(runner.get_state().await, RunnerState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_get_session_status_active() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("s1");
+        runner.start_session(config).await.unwrap();
+        let status = runner.get_session_status("s1").await;
+        assert!(status.is_some());
+        let status = status.unwrap();
+        assert_eq!(status.session_id, "s1");
+        assert_eq!(status.state, "running");
+        assert_eq!(status.model, "claude-sonnet-4-20250514");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_status_completed() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("s1");
+        runner.start_session(config).await.unwrap();
+        runner.wait_for_session("s1").await.unwrap();
+        let status = runner.get_session_status("s1").await;
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().state, "completed");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_status_nonexistent() {
+        let runner = SessionRunner::new(3);
+        let status = runner.get_session_status("nonexistent").await;
+        assert!(status.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_active_sessions() {
+        let runner = SessionRunner::new(3);
+        runner.start_session(test_config("s1")).await.unwrap();
+        runner.start_session(test_config("s2")).await.unwrap();
+        let active = runner.get_active_sessions().await;
+        assert_eq!(active.len(), 2);
+        assert!(active.contains(&"s1".to_string()));
+        assert!(active.contains(&"s2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_completed_sessions() {
+        let runner = SessionRunner::new(3);
+        let config = test_config("s1");
+        runner.start_session(config).await.unwrap();
+        runner.wait_for_session("s1").await.unwrap();
+        let completed = runner.get_completed_sessions().await;
+        assert_eq!(completed.len(), 1);
+        assert!(completed[0].success);
+    }
+
+    #[tokio::test]
+    async fn test_session_result_aborted() {
+        let runner = SessionRunner::new(3);
+        runner.start_session(test_config("s1")).await.unwrap();
+        runner.stop_session("s1").await.unwrap();
+        let completed = runner.get_completed_sessions().await;
+        assert_eq!(completed.len(), 1);
+        assert!(!completed[0].success);
+        assert!(completed[0].error.as_ref().unwrap().contains("aborted"));
+    }
+}

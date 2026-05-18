@@ -268,3 +268,244 @@ fn hmac_sha256(data: &[u8], key: &[u8]) -> Vec<u8> {
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> TokenConfig {
+        TokenConfig::new("test-secret-key", Duration::from_secs(3600))
+    }
+
+    fn test_claims() -> BridgeClaims {
+        let now = current_timestamp();
+        BridgeClaims {
+            sub: "test-agent".to_string(),
+            iss: "claude-code-bridge".to_string(),
+            aud: "claude-code-daemon".to_string(),
+            exp: now + 3600,
+            iat: now,
+            nbf: now,
+            session_id: Some("session-123".to_string()),
+            environment_id: Some("env-456".to_string()),
+            agent_id: Some("agent-789".to_string()),
+            team_name: Some("test-team".to_string()),
+            scope: Some(vec!["session:read".to_string(), "session:write".to_string()]),
+        }
+    }
+
+    #[test]
+    fn test_create_and_encode_token() {
+        let config = test_config();
+        let claims = test_claims();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let encoded = token.encode();
+        assert_eq!(encoded.split('.').count(), 3);
+    }
+
+    #[test]
+    fn test_validate_token_success() {
+        let config = test_config();
+        let claims = test_claims();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let decoded = JwtUtils::validate_token(&token.encode(), &config).unwrap();
+        assert_eq!(decoded.sub, "test-agent");
+        assert_eq!(decoded.session_id, Some("session-123".to_string()));
+    }
+
+    #[test]
+    fn test_validate_token_wrong_secret() {
+        let config = test_config();
+        let claims = test_claims();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let wrong_config = TokenConfig::new("wrong-secret", Duration::from_secs(3600));
+        let result = JwtUtils::validate_token(&token.encode(), &wrong_config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid token signature"));
+    }
+
+    #[test]
+    fn test_validate_token_expired() {
+        let config = test_config();
+        let now = current_timestamp();
+        let mut claims = test_claims();
+        claims.exp = now - 100;
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let result = JwtUtils::validate_token(&token.encode(), &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expired"));
+    }
+
+    #[test]
+    fn test_validate_token_not_yet_valid() {
+        let config = test_config();
+        let now = current_timestamp();
+        let mut claims = test_claims();
+        claims.nbf = now + 3600;
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let result = JwtUtils::validate_token(&token.encode(), &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not yet valid"));
+    }
+
+    #[test]
+    fn test_validate_token_wrong_issuer() {
+        let config = test_config();
+        let mut claims = test_claims();
+        claims.iss = "wrong-issuer".to_string();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let result = JwtUtils::validate_token(&token.encode(), &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid issuer"));
+    }
+
+    #[test]
+    fn test_validate_token_wrong_audience() {
+        let config = test_config();
+        let mut claims = test_claims();
+        claims.aud = "wrong-audience".to_string();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let result = JwtUtils::validate_token(&token.encode(), &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid audience"));
+    }
+
+    #[test]
+    fn test_validate_invalid_jwt_format() {
+        let config = test_config();
+        let result = JwtUtils::validate_token("not.a.valid.jwt.format", &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_refresh_token() {
+        let config = test_config();
+        let claims = test_claims();
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let refreshed = JwtUtils::refresh_token(&token.encode(), &config).unwrap();
+        let decoded = JwtUtils::validate_token(&refreshed.encode(), &config).unwrap();
+        assert_eq!(decoded.sub, "test-agent");
+        assert!(decoded.iat >= current_timestamp());
+    }
+
+    #[test]
+    fn test_refresh_expired_token() {
+        let config = test_config();
+        let now = current_timestamp();
+        let mut claims = test_claims();
+        claims.exp = now - 100;
+        let token = JwtUtils::create_token(&claims, &config).unwrap();
+        let result = JwtUtils::refresh_token(&token.encode(), &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_session_token() {
+        let config = test_config();
+        let token = JwtUtils::create_session_token("sess-1", "agent-1", "team-1", &config).unwrap();
+        let decoded = JwtUtils::validate_token(&token.encode(), &config).unwrap();
+        assert_eq!(decoded.session_id, Some("sess-1".to_string()));
+        assert_eq!(decoded.agent_id, Some("agent-1".to_string()));
+        assert_eq!(decoded.team_name, Some("team-1".to_string()));
+        assert!(decoded.scope.is_some());
+    }
+
+    #[test]
+    fn test_has_scope() {
+        let claims = test_claims();
+        assert!(JwtUtils::has_scope(&claims, "session:read"));
+        assert!(JwtUtils::has_scope(&claims, "session:write"));
+        assert!(!JwtUtils::has_scope(&claims, "admin"));
+    }
+
+    #[test]
+    fn test_has_scope_no_scope_field() {
+        let mut claims = test_claims();
+        claims.scope = None;
+        assert!(!JwtUtils::has_scope(&claims, "session:read"));
+    }
+
+    #[test]
+    fn test_is_expiring_soon() {
+        let claims = test_claims();
+        assert!(!JwtUtils::is_expiring_soon(&claims, Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_is_expiring_soon_threshold() {
+        let now = current_timestamp();
+        let mut claims = test_claims();
+        claims.exp = now + 30;
+        assert!(JwtUtils::is_expiring_soon(&claims, Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_remaining_lifetime() {
+        let now = current_timestamp();
+        let mut claims = test_claims();
+        claims.exp = now + 1800;
+        let remaining = JwtUtils::remaining_lifetime(&claims);
+        assert!(remaining.as_secs() >= 1799);
+        assert!(remaining.as_secs() <= 1801);
+    }
+
+    #[test]
+    fn test_jwt_token_decode() {
+        let token = JwtToken {
+            header: "abc".to_string(),
+            payload: "def".to_string(),
+            signature: "ghi".to_string(),
+        };
+        let encoded = token.encode();
+        let decoded = JwtToken::decode(&encoded).unwrap();
+        assert_eq!(decoded.header, "abc");
+        assert_eq!(decoded.payload, "def");
+        assert_eq!(decoded.signature, "ghi");
+    }
+
+    #[test]
+    fn test_jwt_token_decode_invalid() {
+        let result = JwtToken::decode("only.two");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_token_config_new() {
+        let config = TokenConfig::new("my-secret", Duration::from_secs(1800));
+        assert_eq!(config.secret, b"my-secret");
+        assert_eq!(config.ttl, Duration::from_secs(1800));
+        assert_eq!(config.issuer, "claude-code-bridge");
+        assert_eq!(config.audience, "claude-code-daemon");
+    }
+
+    #[test]
+    fn test_base64_encode_decode_roundtrip() {
+        let data = b"Hello, world!";
+        let encoded = base64_encode(data);
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_base64_decode_invalid() {
+        let result = base64_decode("!!!invalid!!!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_hmac_sha256_deterministic() {
+        let key = b"test-key";
+        let data = b"test-data";
+        let sig1 = hmac_sha256(data, key);
+        let sig2 = hmac_sha256(data, key);
+        assert_eq!(sig1, sig2);
+    }
+
+    #[test]
+    fn test_hmac_sha256_different_key() {
+        let data = b"test-data";
+        let sig1 = hmac_sha256(data, b"key1");
+        let sig2 = hmac_sha256(data, b"key2");
+        assert_ne!(sig1, sig2);
+    }
+}

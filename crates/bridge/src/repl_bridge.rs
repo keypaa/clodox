@@ -277,3 +277,206 @@ impl ReplBridgeService {
         self.connected_at.read().await.map(|t| t.elapsed())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> BridgeConfig {
+        BridgeConfig {
+            url: "ws://localhost:8080".to_string(),
+            session_id: Some("sess-1".to_string()),
+            environment_id: Some("env-1".to_string()),
+            auth_token: Some("token".to_string()),
+            reconnect_attempts: 3,
+            reconnect_delay_ms: 10,
+            heartbeat_interval_ms: 30000,
+        }
+    }
+
+    #[test]
+    fn test_bridge_config_default() {
+        let config = BridgeConfig::default();
+        assert!(config.url.is_empty());
+        assert!(config.session_id.is_none());
+        assert_eq!(config.reconnect_attempts, 5);
+        assert_eq!(config.reconnect_delay_ms, 1000);
+        assert_eq!(config.heartbeat_interval_ms, 30000);
+    }
+
+    #[tokio::test]
+    async fn test_new_bridge_is_disconnected() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        assert_eq!(bridge.get_status().await, BridgeConnectionStatus::Disconnected);
+        assert!(!bridge.is_connected().await);
+        assert!(bridge.get_session_id().await.is_none());
+        assert!(bridge.connection_duration().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_connect_success() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        assert_eq!(bridge.get_status().await, BridgeConnectionStatus::Connected);
+        assert!(bridge.is_connected().await);
+        assert_eq!(bridge.get_session_id().await, Some("sess-1".to_string()));
+        assert_eq!(bridge.get_environment_id().await, Some("env-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_connect_requires_url() {
+        let config = BridgeConfig::default();
+        let bridge = ReplBridgeService::new(config);
+        let result = bridge.connect().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("URL is required"));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        bridge.disconnect("user request").await;
+        assert_eq!(bridge.get_status().await, BridgeConnectionStatus::Disconnected);
+        assert!(!bridge.is_connected().await);
+        assert!(bridge.connection_duration().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_send_message_not_connected() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        let result = bridge.send_message("Hello").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not connected"));
+    }
+
+    #[tokio::test]
+    async fn test_send_message_success() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        let message_id = bridge.send_message("Hello").await.unwrap();
+        assert!(!message_id.is_empty());
+        assert_eq!(bridge.pending_message_count().await, 1);
+        assert_eq!(bridge.message_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_acknowledge_message() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        let message_id = bridge.send_message("Hello").await.unwrap();
+        assert_eq!(bridge.pending_message_count().await, 1);
+        bridge.acknowledge_message(&message_id).await;
+        assert_eq!(bridge.pending_message_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_received_message() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        let mut rx = bridge.subscribe();
+        bridge.handle_received_message("Response from server").await;
+        let event = rx.try_recv().unwrap();
+        match event {
+            BridgeEvent::MessageReceived { message } => assert_eq!(message, "Response from server"),
+            _ => panic!("Expected MessageReceived"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_send_heartbeat_when_connected() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        let mut rx = bridge.subscribe();
+        bridge.send_heartbeat().await;
+        let event = rx.try_recv().unwrap();
+        assert!(matches!(event, BridgeEvent::Heartbeat { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_send_heartbeat_when_disconnected() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.send_heartbeat().await;
+        // Should not panic, just silently skip
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_success() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        let result = bridge.reconnect().await;
+        assert!(result.is_ok());
+        assert_eq!(bridge.get_status().await, BridgeConnectionStatus::Connected);
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_requires_url() {
+        let config = BridgeConfig::default();
+        let bridge = ReplBridgeService::new(config);
+        let result = bridge.reconnect().await;
+        assert!(result.is_err());
+        assert_eq!(bridge.get_status().await, BridgeConnectionStatus::Error);
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_clears_pending_messages() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        bridge.connect().await.unwrap();
+        bridge.send_message("msg1").await.unwrap();
+        bridge.send_message("msg2").await.unwrap();
+        assert_eq!(bridge.pending_message_count().await, 2);
+        bridge.disconnect("test").await;
+        assert_eq!(bridge.pending_message_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_connection_duration() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        assert!(bridge.connection_duration().await.is_none());
+        bridge.connect().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let duration = bridge.connection_duration().await;
+        assert!(duration.is_some());
+        assert!(duration.unwrap().as_millis() >= 50);
+    }
+
+    #[tokio::test]
+    async fn test_get_error_initially_none() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        assert!(bridge.get_error().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_config() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        let new_config = BridgeConfig {
+            url: "ws://new-host:9090".to_string(),
+            ..BridgeConfig::default()
+        };
+        bridge.update_config(new_config).await;
+        let retrieved = bridge.get_config().await;
+        assert_eq!(retrieved.url, "ws://new-host:9090");
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() {
+        let config = test_config();
+        let bridge = ReplBridgeService::new(config);
+        let mut rx = bridge.subscribe();
+        bridge.connect().await.unwrap();
+        let event = rx.try_recv().unwrap();
+        assert!(matches!(event, BridgeEvent::Connected { .. }));
+    }
+}
