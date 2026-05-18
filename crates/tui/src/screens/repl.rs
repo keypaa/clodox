@@ -136,6 +136,7 @@ impl ReplScreen {
             ])
             .split(area);
 
+        // Left block with right border divider
         let left_block = Block::default()
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(accent_color));
@@ -158,26 +159,29 @@ impl ReplScreen {
         let welcome = "Welcome back my Thane!";
         let welcome_padding = left_width.saturating_sub(welcome.len()) / 2;
 
+        // Clean symmetrical Space Invader ASCII sprite
         let alien = vec![
-            "  ▐▛███▜▌  ",
-            " ▝▜█████▛▘ ",
-            "   ▘▘ ▝   ",
+            "  ▄▀▀▀▀▀▄  ",
+            " ▐ ▀▀▄ ",
+            " ▐█▀▄▀▄█▌ ",
+            "  ▀▄▀▄▀   ",
         ];
 
-        let model_info = vec![
-            "Sonnet 4.6 · Claude Pro · Organization",
-            "~/GitHub/simplespace",
-        ];
+        let model_line = "Sonnet 4.6 · Claude Pro · Organization";
+        let path_line = "~/GitHub/simplespace";
 
         let mut left_content = Vec::new();
 
+        // Welcome message (centered)
         left_content.push(Line::from(vec![
             Span::raw(" ".repeat(welcome_padding)),
             Span::styled(welcome, welcome_style),
         ]));
 
+        // Empty line
         left_content.push(Line::from(vec![Span::raw("")]));
 
+        // ASCII alien (centered)
         for alien_line in &alien {
             let alien_padding = left_width.saturating_sub(alien_line.len()) / 2;
             left_content.push(Line::from(vec![
@@ -186,43 +190,71 @@ impl ReplScreen {
             ]));
         }
 
+        // Empty line
         left_content.push(Line::from(vec![Span::raw("")]));
 
-        for info_line in &model_info {
-            let info_padding = left_width.saturating_sub(info_line.len()) / 2;
-            left_content.push(Line::from(vec![
-                Span::raw(" ".repeat(info_padding)),
-                Span::styled(*info_line, dim_style),
-            ]));
-        }
+        // Model info (left-aligned)
+        left_content.push(Line::from(vec![
+            Span::styled(model_line, dim_style),
+        ]));
+
+        // Path (right-aligned)
+        let path_padding = left_width.saturating_sub(path_line.len());
+        left_content.push(Line::from(vec![
+            Span::raw(" ".repeat(path_padding)),
+            Span::styled(path_line, dim_style),
+        ]));
 
         let left_paragraph = Paragraph::new(left_content);
         frame.render_widget(left_paragraph, left_inner);
+
+        // Right chunk with left margin
+        let right_inner = Rect {
+            x: layout[1].x + 2,
+            y: layout[1].y,
+            width: layout[1].width.saturating_sub(2),
+            height: layout[1].height,
+        };
 
         let tips_style = Style::default()
             .fg(accent_color)
             .add_modifier(Modifier::BOLD);
 
-        let separator = "─".repeat(25);
-        let separator_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
-            .add_modifier(Modifier::DIM);
+        // Tips block with bottom border only
+        let tips_block = Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(accent_color));
 
-        let right_content = vec![
+        let tips_inner = tips_block.inner(right_inner);
+        frame.render_widget(tips_block, right_inner);
+
+        let tips_content = vec![
             Line::from(vec![Span::styled("Tips for getting started", tips_style)]),
-            Line::from(vec![Span::styled(separator.clone(), separator_style.clone())]),
             Line::from(vec![Span::styled(
                 "Run /init to create a CLAUDE.md file with instruc...",
                 dim_style,
             )]),
-            Line::from(vec![Span::raw("")]),
+        ];
+
+        let tips_paragraph = Paragraph::new(tips_content);
+        frame.render_widget(tips_paragraph, tips_inner);
+
+        // Recent activity (no underline)
+        let activity_y = right_inner.y + 3;
+        let activity_area = Rect {
+            x: right_inner.x,
+            y: activity_y,
+            width: right_inner.width,
+            height: right_inner.height.saturating_sub(3),
+        };
+
+        let activity_content = vec![
             Line::from(vec![Span::styled("Recent activity", tips_style)]),
-            Line::from(vec![Span::styled(separator, separator_style)]),
             Line::from(vec![Span::styled("No recent activity", dim_style)]),
         ];
 
-        let right_paragraph = Paragraph::new(right_content);
-        frame.render_widget(right_paragraph, layout[1]);
+        let activity_paragraph = Paragraph::new(activity_content);
+        frame.render_widget(activity_paragraph, activity_area);
     }
 
     fn render_prompt_input(
@@ -279,4 +311,3 @@ impl ReplScreen {
         }
     }
 }
-
