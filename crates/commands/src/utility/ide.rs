@@ -23,7 +23,7 @@ impl Command for IdeCommand {
     }
 
     fn description(&self) -> &str {
-        "IDE integration"
+        "IDE integration settings"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,6 @@ impl Command for IdeCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /ide command not yet implemented")
+        CommandResult::text("IDE integration status:\n\n  No IDE connected.\n\nSupported IDEs: VS Code, JetBrains, Neovim\n(IDE integration not yet implemented)")
     }
 }

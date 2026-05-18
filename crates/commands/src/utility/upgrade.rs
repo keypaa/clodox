@@ -23,7 +23,7 @@ impl Command for UpgradeCommand {
     }
 
     fn description(&self) -> &str {
-        "Check for upgrades"
+        "Check for updates"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,6 @@ impl Command for UpgradeCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /upgrade command not yet implemented")
+        CommandResult::text("Current version: v0.1.0\n\nTo upgrade:\n  cargo install claude-code-rs\n\n(Automatic upgrade not yet implemented)")
     }
 }

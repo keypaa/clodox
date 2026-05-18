@@ -23,7 +23,7 @@ impl Command for UsageCommand {
     }
 
     fn description(&self) -> &str {
-        "Show usage statistics"
+        "Show API usage statistics"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,17 @@ impl Command for UsageCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /usage command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+
+        let mut output = String::from("API usage (this session):\n\n");
+        output.push_str(&format!("  Requests:        1+\n"));
+        output.push_str(&format!("  Input tokens:    {}\n", state.token_counts.input_tokens));
+        output.push_str(&format!("  Output tokens:   {}\n", state.token_counts.output_tokens));
+        output.push_str(&format!("  Cache read:      {}\n", state.token_counts.cache_read_tokens));
+        output.push_str(&format!("  Cache created:   {}\n", state.token_counts.cache_creation_tokens));
+        output.push_str(&format!("  Total cost:      ${:.4}\n", state.total_cost_usd));
+        output.push_str("\n(Usage tracking is session-only — not persisted)");
+        CommandResult::text(output)
     }
 }

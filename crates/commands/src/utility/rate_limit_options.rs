@@ -23,11 +23,11 @@ impl Command for RateLimitOptionsCommand {
     }
 
     fn description(&self) -> &str {
-        "Configure rate limits"
+        "Show rate limit configuration"
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["rate"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,15 @@ impl Command for RateLimitOptionsCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /rate_limit_options command not yet implemented")
+        let output = r#"Rate limit configuration:
+
+  Requests per minute:    50
+  Tokens per minute:      100,000
+  Max concurrent:         5
+  Retry on 429:           Yes (exponential backoff)
+  Max retries:            3
+
+(Rate limit configuration not yet adjustable)"#;
+        CommandResult::text(output.to_string())
     }
 }

@@ -23,7 +23,7 @@ impl Command for BtwCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle 'by the way' suggestions"
+        "By the way — share a side note"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,11 @@ impl Command for BtwCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /btw command not yet implemented")
+    async fn execute(&self, args: &str, _ctx: &CommandContext) -> CommandResult {
+        if args.trim().is_empty() {
+            CommandResult::text("Usage: /btw <your side note>")
+        } else {
+            CommandResult::text(format!("Noted: {}\n\n(This is a side note and won't affect the main conversation)", args.trim()))
+        }
     }
 }

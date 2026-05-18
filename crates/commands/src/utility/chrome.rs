@@ -23,7 +23,7 @@ impl Command for ChromeCommand {
     }
 
     fn description(&self) -> &str {
-        "Chrome integration"
+        "Open Chrome DevTools integration"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,6 @@ impl Command for ChromeCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /chrome command not yet implemented")
+        CommandResult::text("Chrome DevTools integration requires a running Chrome instance with remote debugging enabled.\n\nUsage: chrome --remote-debugging-port=9222\n\n(Chrome integration not yet implemented)")
     }
 }

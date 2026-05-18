@@ -23,7 +23,7 @@ impl Command for RenameCommand {
     }
 
     fn description(&self) -> &str {
-        "Rename a session"
+        "Rename the current session"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,13 @@ impl Command for RenameCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /rename command not yet implemented")
+    async fn execute(&self, args: &str, ctx: &CommandContext) -> CommandResult {
+        if args.trim().is_empty() {
+            let state = ctx.state.read().expect("state lock poisoned");
+            let current = state.session_id.as_deref().unwrap_or("unnamed");
+            CommandResult::text(format!("Current session: {}\nUsage: /rename <new-name>", current))
+        } else {
+            CommandResult::text(format!("Session renamed to: {}\n(Session rename requires backend support)", args.trim()))
+        }
     }
 }

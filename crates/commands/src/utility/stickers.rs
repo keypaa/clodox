@@ -23,7 +23,7 @@ impl Command for StickersCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle stickers"
+        "Show available stickers"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,18 @@ impl Command for StickersCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /stickers command not yet implemented")
+        let output = r#"Available stickers:
+
+  🦀  Rustacean
+  🚀  Rocket
+  💡  Idea
+  ✅  Done
+  ❌  Error
+  🔧  Fix
+  📝  Note
+  🎯  Target
+
+(Stickers are decorative — they don't affect functionality)"#;
+        CommandResult::text(output.to_string())
     }
 }

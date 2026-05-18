@@ -23,7 +23,7 @@ impl Command for ThinkbackPlayCommand {
     }
 
     fn description(&self) -> &str {
-        "Play back thinkback"
+        "Replay past conversation"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,9 @@ impl Command for ThinkbackPlayCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /thinkback_play command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let count = state.messages.len();
+        CommandResult::text(format!("Replaying {} messages...\n(Thinkback play not yet implemented)", count))
     }
 }

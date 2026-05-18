@@ -27,7 +27,7 @@ impl Command for ReleaseNotesCommand {
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["changelog"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,29 @@ impl Command for ReleaseNotesCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /release_notes command not yet implemented")
+        let output = r#"Release Notes — claude-code-rs v0.1.0
+
+  Initial Rust port of Claude Code.
+
+  Features implemented:
+  - Full TUI with ratatui + crossterm
+  - Command system with 62+ slash commands
+  - Query engine with streaming
+  - Tool execution (Bash, Read, Write, Edit, Grep, Glob)
+  - Permission system with risk assessment
+  - Session lifecycle management
+  - Token/cost tracking
+
+  Features in progress:
+  - Service layer (MCP, API, compact)
+  - Bridge system
+  - Missing tools (web_fetch, web_search, agent)
+
+  Known gaps:
+  - REPL (requires Node.js vm module)
+  - Voice mode
+  - Agent swarms
+  - Computer use"#;
+        CommandResult::text(output.to_string())
     }
 }

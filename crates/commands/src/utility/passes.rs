@@ -23,7 +23,7 @@ impl Command for PassesCommand {
     }
 
     fn description(&self) -> &str {
-        "Show pre-pass information"
+        "Show compilation passes"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,6 @@ impl Command for PassesCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /passes command not yet implemented")
+        CommandResult::text("Compilation passes:\n\n  No passes configured.\n\n(Passes are used for multi-step code transformations)\n(Passes not yet implemented)")
     }
 }

@@ -23,18 +23,22 @@ impl Command for ReloadPluginsCommand {
     }
 
     fn description(&self) -> &str {
-        "Reload plugins"
+        "Reload all plugins"
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["reload"]
     }
 
     fn command_type(&self) -> CommandType {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /reload_plugins command not yet implemented")
+    async fn execute(&self, _args: &str, ctx: &CommandContext) -> CommandResult {
+        let state = ctx.state.read().expect("state lock poisoned");
+        let count = state.plugins.enabled.len() + state.plugins.disabled.len();
+        drop(state);
+
+        CommandResult::text(format!("Reloading {} plugins...\n(Plugin reload not yet implemented)", count))
     }
 }

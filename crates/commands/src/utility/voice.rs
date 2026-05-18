@@ -35,6 +35,6 @@ impl Command for VoiceCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /voice command not yet implemented")
+        CommandResult::text("Voice mode requires:\n  - Audio capture device\n  - Speech-to-text engine\n  - Text-to-speech engine\n\n(Voice mode not yet implemented)")
     }
 }

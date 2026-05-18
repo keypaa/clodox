@@ -23,7 +23,7 @@ impl Command for RemoteSetupCommand {
     }
 
     fn description(&self) -> &str {
-        "Set up remote connection"
+        "Configure remote session"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,14 @@ impl Command for RemoteSetupCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /remote_setup command not yet implemented")
+        let output = r#"Remote session setup:
+
+  To connect to a remote session:
+  1. Start the bridge server on the remote machine
+  2. Run: /remote_setup <bridge-url>
+  3. Authenticate when prompted
+
+  (Remote setup not yet implemented)"#;
+        CommandResult::text(output.to_string())
     }
 }

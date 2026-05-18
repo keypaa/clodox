@@ -23,11 +23,11 @@ impl Command for KeybindingsCommand {
     }
 
     fn description(&self) -> &str {
-        "Show keybindings"
+        "Show keyboard shortcuts"
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["keys", "shortcuts"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,21 @@ impl Command for KeybindingsCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /keybindings command not yet implemented")
+        let output = r#"Keyboard shortcuts:
+
+  Enter        Send message
+  Ctrl+C       Cancel query / Exit (double-press)
+  Ctrl+L       Clear screen
+  Up/Down      Navigate history
+  Tab          Autocomplete
+  Ctrl+K       Clear input
+  Ctrl+U       Delete to start of line
+  Ctrl+W       Delete previous word
+  Ctrl+R       Search history
+  Esc          Close dialog / Navigate back
+  ?            Show help
+  /            Start slash command
+"#;
+        CommandResult::text(output.to_string())
     }
 }

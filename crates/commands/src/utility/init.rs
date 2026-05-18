@@ -23,7 +23,7 @@ impl Command for InitCommand {
     }
 
     fn description(&self) -> &str {
-        "Initialize project"
+        "Initialize Claude Code in a project"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -35,6 +35,15 @@ impl Command for InitCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /init command not yet implemented")
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let claude_md = cwd.join("CLAUDE.md");
+        let settings = cwd.join(".claude").join("settings.json");
+
+        let mut output = String::from("Project initialization:\n\n");
+        output.push_str(&format!("  Working directory: {}\n", cwd.display()));
+        output.push_str(&format!("  CLAUDE.md:         {}\n", if claude_md.exists() { "exists" } else { "not found" }));
+        output.push_str(&format!("  .claude/settings:  {}\n", if settings.exists() { "exists" } else { "not found" }));
+        output.push_str("\nUse /init to create missing config files.\n(Init not yet implemented)");
+        CommandResult::text(output)
     }
 }

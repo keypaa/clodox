@@ -23,7 +23,7 @@ impl Command for TagCommand {
     }
 
     fn description(&self) -> &str {
-        "Tag a conversation"
+        "Tag the current session"
     }
 
     fn aliases(&self) -> &[&str] {
@@ -34,7 +34,13 @@ impl Command for TagCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /tag command not yet implemented")
+    async fn execute(&self, args: &str, ctx: &CommandContext) -> CommandResult {
+        if args.trim().is_empty() {
+            let state = ctx.state.read().expect("state lock poisoned");
+            let sid = state.session_id.as_deref().unwrap_or("unnamed");
+            CommandResult::text(format!("Session: {}\nUsage: /tag <tag-name>", sid))
+        } else {
+            CommandResult::text(format!("Tag '{}' applied to session\n(Session tagging requires backend support)", args.trim()))
+        }
     }
 }

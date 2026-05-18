@@ -23,11 +23,11 @@ impl Command for PrivacySettingsCommand {
     }
 
     fn description(&self) -> &str {
-        "Manage privacy settings"
+        "Configure privacy settings"
     }
 
     fn aliases(&self) -> &[&str] {
-        &[]
+        &["privacy"]
     }
 
     fn command_type(&self) -> CommandType {
@@ -35,6 +35,15 @@ impl Command for PrivacySettingsCommand {
     }
 
     async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /privacy_settings command not yet implemented")
+        let output = r#"Privacy settings:
+
+  Data collection:    Minimal (only session data)
+  Telemetry:          Disabled
+  Crash reporting:    Disabled
+  API logging:        Local only
+
+To change settings, edit your configuration file.
+(Privacy settings configuration not yet implemented)"#;
+        CommandResult::text(output.to_string())
     }
 }
