@@ -189,7 +189,7 @@ impl LogoHeader {
     fn render_horizontal(&self, columns: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
-        let left_width = LEFT_PANEL_MAX_WIDTH.min(columns / 2);
+        let left_width = 40.min(columns / 2);
         let right_width = columns.saturating_sub(left_width + 3);
 
         let welcome = self.welcome_message();
@@ -206,9 +206,8 @@ impl LogoHeader {
         let cwd_line = self.cwd_line();
 
         let activity_lines = self.render_recent_activity_feed(right_width);
-        let whats_new_lines = self.render_whats_new_feed(right_width);
 
-        let max_height = 9.max(activity_lines.len()).max(whats_new_lines.len());
+        let max_height = 9.max(activity_lines.len());
 
         for i in 0..max_height {
             let mut left_spans = Vec::new();
@@ -216,11 +215,18 @@ impl LogoHeader {
 
             match i {
                 0 => {
+                    // Center welcome message in left panel
+                    let padding = (left_width as usize).saturating_sub(welcome.len()) / 2;
+                    left_spans.push(Span::raw(" ".repeat(padding)));
                     left_spans.push(Span::styled(welcome.clone(), welcome_style));
                 }
                 1 => {}
                 2..=4 => {
                     if let Some(clawd_line) = clawd_lines.get(i - 2) {
+                        // Center clawd in left panel
+                        let clawd_width = 11;
+                        let padding = (left_width as usize).saturating_sub(clawd_width) / 2;
+                        left_spans.push(Span::raw(" ".repeat(padding)));
                         for span in &clawd_line.spans {
                             left_spans.push(span.clone());
                         }
@@ -281,50 +287,67 @@ impl LogoHeader {
     fn render_recent_activity_feed(&self, max_width: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
-        let title_style = Style::default()
+        let tips_style = Style::default()
             .fg(ratatui::style::Color::Cyan)
             .add_modifier(Modifier::BOLD);
-        lines.push(Line::from(vec![Span::styled("Recent Activity", title_style)]));
+        lines.push(Line::from(vec![Span::styled("Tips for getting started", tips_style)]));
 
         let separator = "─".repeat(max_width.min(30) as usize);
         lines.push(Line::from(vec![Span::styled(
-            separator,
+            separator.clone(),
             Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM),
         )]));
 
-        for (i, entry) in self.recent_activity.iter().take(3).enumerate() {
-            let num_style = Style::default()
-                .fg(ratatui::style::Color::Green)
-                .add_modifier(Modifier::BOLD);
-            let summary_style = Style::default()
-                .fg(ratatui::style::Color::White)
-                .add_modifier(Modifier::DIM);
-            let time_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
-                .add_modifier(Modifier::DIM);
+        lines.push(Line::from(vec![Span::styled(
+            "Run /init to create a CLAUDE.md file with instructions...",
+            Style::default().fg(ratatui::style::Color::White).add_modifier(Modifier::DIM),
+        )]));
 
-            let max_summary = (max_width as usize).saturating_sub(12);
-            let summary = if entry.summary.len() > max_summary {
-                format!("{}…", &entry.summary[..max_summary.saturating_sub(1)])
-            } else {
-                entry.summary.clone()
-            };
+        lines.push(Line::from(vec![Span::raw("")]));
 
-            lines.push(Line::from(vec![
-                Span::styled(format!("[{}] ", i + 1), num_style),
-                Span::styled(summary, summary_style),
-            ]));
-            lines.push(Line::from(vec![
-                Span::raw("    "),
-                Span::styled(entry.time_ago(), time_style),
-            ]));
-        }
+        let activity_style = Style::default()
+            .fg(ratatui::style::Color::Cyan)
+            .add_modifier(Modifier::BOLD);
+        lines.push(Line::from(vec![Span::styled("Recent activity", activity_style)]));
+
+        lines.push(Line::from(vec![Span::styled(
+            separator.clone(),
+            Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM),
+        )]));
 
         if self.recent_activity.is_empty() {
             let empty_style = Style::default()
                 .fg(ratatui::style::Color::DarkGray)
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![Span::styled("No recent activity", empty_style)]));
+        } else {
+            for (i, entry) in self.recent_activity.iter().take(3).enumerate() {
+                let num_style = Style::default()
+                    .fg(ratatui::style::Color::Green)
+                    .add_modifier(Modifier::BOLD);
+                let summary_style = Style::default()
+                    .fg(ratatui::style::Color::White)
+                    .add_modifier(Modifier::DIM);
+                let time_style = Style::default()
+                    .fg(ratatui::style::Color::DarkGray)
+                    .add_modifier(Modifier::DIM);
+
+                let max_summary = (max_width as usize).saturating_sub(12);
+                let summary = if entry.summary.len() > max_summary {
+                    format!("{}…", &entry.summary[..max_summary.saturating_sub(1)])
+                } else {
+                    entry.summary.clone()
+                };
+
+                lines.push(Line::from(vec![
+                    Span::styled(format!("[{}] ", i + 1), num_style),
+                    Span::styled(summary, summary_style),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(entry.time_ago(), time_style),
+                ]));
+            }
         }
 
         lines
@@ -445,7 +468,8 @@ impl Themeable for LogoHeaderWidget<'_> {
                     cell.set_symbol("─");
                     cell.set_style(border_style);
                 } else if dy == 0 {
-                    let title_start = 3;
+                    // Center the title on the top border
+                    let title_start = ((width as usize) - border_title.len()) / 2;
                     let char_idx = dx as usize;
                     if char_idx >= title_start && char_idx < title_start + border_title.len() {
                         let ch = border_title.chars().nth(char_idx - title_start).unwrap();
