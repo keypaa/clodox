@@ -187,6 +187,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 - 10.4: Registry update — register all new tools, `AgentColorManager` shared instance
 - 10.5: Final compilation verification — clean `cargo check` across all crates
 
+### Phase 11: TUI Integration for Advanced Tools ✅ (1/1 sub-phases)
+- 11.0: Tool rendering — `web_fetch`, `web_search`, `agent` display components, shared message converter, spinner integration
+
 ---
 
 ## Remaining Work
