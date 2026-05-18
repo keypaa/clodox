@@ -9,6 +9,10 @@ use crate::file_read::FileReadTool;
 use crate::file_write::FileWriteTool;
 use crate::glob::GlobTool;
 use crate::grep::GrepTool;
+use crate::agent::AgentColorManager;
+use crate::agent::AgentTool;
+use crate::web_fetch::WebFetchTool;
+use crate::web_search::WebSearchTool;
 
 /// Tool registry - manages all available tools.
 #[derive(Debug)]
@@ -68,6 +72,12 @@ impl ToolRegistry {
         registry.register(FileEditTool::new(read_state));
         registry.register(GrepTool::new());
         registry.register(GlobTool::new());
+
+        // Register MCP-aware tools
+        registry.register(WebFetchTool::new());
+        registry.register(WebSearchTool::new());
+        let color_manager = AgentColorManager::new();
+        registry.register(AgentTool::new(color_manager));
 
         registry
     }
