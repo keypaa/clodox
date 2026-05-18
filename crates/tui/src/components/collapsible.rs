@@ -55,7 +55,7 @@ impl CollapsibleBlock {
         ]));
 
         if self.is_expanded {
-            let content_style = Style::default()
+            let _content_style = Style::default()
                 .fg(ratatui::style::Color::White)
                 .add_modifier(Modifier::DIM);
 
@@ -71,7 +71,7 @@ impl CollapsibleBlock {
             if content_lines.len() > max_lines {
                 let remaining = content_lines.len() - max_lines;
                 let hint = format!("  ... +{} more lines", remaining);
-                let hint_style = Style::default()
+                let _hint_style = Style::default()
                     .fg(ratatui::style::Color::DarkGray)
                     .add_modifier(Modifier::DIM);
                 lines.push(Line::from(vec![Span::raw(hint)]));
@@ -92,7 +92,7 @@ impl CollapsibleBlock {
                 }
                 if self.content.lines().count() > self.max_collapsed_lines {
                     let hint = format!("    ... +{} lines (Enter to expand)", self.content.lines().count() - self.max_collapsed_lines);
-                    let hint_style = Style::default()
+                    let _hint_style = Style::default()
                         .fg(ratatui::style::Color::DarkGray)
                         .add_modifier(Modifier::DIM);
                     lines.push(Line::from(vec![Span::raw(hint)]));

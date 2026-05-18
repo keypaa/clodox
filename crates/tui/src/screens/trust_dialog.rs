@@ -105,7 +105,7 @@ impl<'a> TrustDialogWidget<'a> {
 }
 
 impl Themeable for TrustDialogWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         // Clear the entire screen first to remove any leftover content from previous modes
         let bg_style = Style::default().bg(ratatui::style::Color::Black);
         for y in 0..area.height {

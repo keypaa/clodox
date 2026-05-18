@@ -1,13 +1,12 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::Paragraph;
 
 use crate::theme::Theme;
 use crate::state::AppState;
 use crate::components::messages::row::{RenderMessage, render_messages};
 use crate::components::spinner::with_verb::{SpinnerWithVerb, IdleStatus};
-use crate::components::prompt_input::text_input::TextInputWidget;
 use crate::components::prompt_input::footer::{PromptFooter, PromptMode};
 use crate::components::prompt_input::autocomplete::{AutocompleteWidget, AutocompleteState};
 use crate::components::permissions::dialog::{PermissionDialog, PermissionDialogWidget};

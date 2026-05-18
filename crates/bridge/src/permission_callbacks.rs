@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use cc_core::permissions::{PermissionBehavior, PermissionMode, PermissionResult};
+use cc_core::permissions::{PermissionMode, PermissionResult};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};

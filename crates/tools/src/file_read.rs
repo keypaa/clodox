@@ -106,7 +106,7 @@ impl FileReadTool {
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
         let start = offset.saturating_sub(1); // 1-indexed
-        let end = (start + limit).min(total_lines);
+        let _end = (start + limit).min(total_lines);
 
         let selected: Vec<&str> = lines.iter().skip(start).take(limit).copied().collect();
 

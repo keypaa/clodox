@@ -111,7 +111,7 @@ impl StreamingAccumulator {
             });
         }
 
-        if let (Some(id), Some(name)) = (self.current_tool_id.take(), self.current_tool_name.take()) {
+        if let (Some(_id), Some(name)) = (self.current_tool_id.take(), self.current_tool_name.take()) {
             let details = if self.current_tool_json.is_empty() {
                 None
             } else {
@@ -172,7 +172,7 @@ pub fn handle_query_event(
     state: &SharedState,
     accumulator: &mut StreamingAccumulator,
     permission_mode: PermissionMode,
-    permission_context: &ToolPermissionContext,
+    _permission_context: &ToolPermissionContext,
 ) {
     match event_result {
         Ok(event) => match event {
@@ -286,7 +286,7 @@ pub fn handle_query_event(
 
                 if let Some(tc) = needs_approval {
                     let risk = assess_tool_risk(&tc.name, &tc.input);
-                    let dialog = PermissionDialog::new(
+                    let _dialog = PermissionDialog::new(
                         &format!("Allow {}?", tc.name),
                         &format_tool_permission_message(&tc.name, &tc.input),
                         &format_tool_call_display(&tc.name, &tc.input),

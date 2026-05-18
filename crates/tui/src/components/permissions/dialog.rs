@@ -1,4 +1,4 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
@@ -86,7 +86,7 @@ impl PermissionDialog {
         }
     }
 
-    fn render_lines(&self, width: u16) -> Vec<Line<'static>> {
+    fn render_lines(&self, _width: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
         let risk_color = self.risk_color();
@@ -190,7 +190,7 @@ impl<'a> PermissionDialogWidget<'a> {
 }
 
 impl Themeable for PermissionDialogWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         let lines = self.dialog.render_lines(area.width);
 
         let dialog_height = lines.len() as u16 + 4;

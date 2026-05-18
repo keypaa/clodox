@@ -9,7 +9,7 @@ use cc_query::retry::RetryOptions;
 use futures::Stream;
 use futures::StreamExt;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// Rate limit configuration.
 #[derive(Debug, Clone)]

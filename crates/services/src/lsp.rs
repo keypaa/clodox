@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// LSP server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,7 +157,7 @@ impl LspService {
             .stderr(std::process::Stdio::piped());
 
         match cmd.spawn() {
-            Ok(mut child) => {
+            Ok(child) => {
                 let pid = child.id();
                 state.pid = pid;
                 state.status = LspServerStatus::Connected;

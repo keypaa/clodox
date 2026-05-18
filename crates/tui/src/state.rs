@@ -11,12 +11,12 @@ pub fn create_state() -> SharedState {
 }
 
 /// Read lock helper.
-pub fn read_state(state: &SharedState) -> std::sync::RwLockReadGuard<AppState> {
+pub fn read_state(state: &SharedState) -> std::sync::RwLockReadGuard<'_, AppState> {
     state.read().expect("State lock poisoned")
 }
 
 /// Write lock helper.
-pub fn write_state(state: &SharedState) -> std::sync::RwLockWriteGuard<AppState> {
+pub fn write_state(state: &SharedState) -> std::sync::RwLockWriteGuard<'_, AppState> {
     state.write().expect("State lock poisoned")
 }
 

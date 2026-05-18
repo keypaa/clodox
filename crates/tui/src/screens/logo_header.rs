@@ -154,7 +154,7 @@ impl LogoHeader {
         }
     }
 
-    fn render_compact(&self, columns: u16) -> Vec<Line<'static>> {
+    fn render_compact(&self, _columns: u16) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
         let welcome = self.welcome_message();
@@ -391,7 +391,7 @@ impl<'a> LogoHeaderWidget<'a> {
 }
 
 impl Themeable for LogoHeaderWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         let lines = self.header.render_lines(self.columns);
         let layout_mode = get_layout_mode(self.columns);
 

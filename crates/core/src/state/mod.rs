@@ -4,10 +4,10 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 
 use crate::messages::Message;
-use crate::permissions::{ToolPermissionContext, ToolPermissionRulesBySource};
+use crate::permissions::ToolPermissionContext;
 use crate::tools::Tools;
 use crate::types::{
-    AdditionalWorkingDirectory, AttributionState, EffortValue, FileHistoryState, ThemeName,
+    AttributionState, EffortValue, FileHistoryState, ThemeName,
 };
 
 /// A minimal Redux-like store.

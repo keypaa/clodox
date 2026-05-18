@@ -213,7 +213,7 @@ impl<'a> AutocompleteWidget<'a> {
 }
 
 impl Themeable for AutocompleteWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         let lines = self.render_lines();
         let y_end = (area.y + area.height).min(buf.area.height);
         for (i, line) in lines.iter().enumerate() {

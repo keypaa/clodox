@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use cc_core::tools::{Tool, Tools, ToolUseContext};
 use tracing::{debug, info, warn};

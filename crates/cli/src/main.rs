@@ -251,7 +251,7 @@ async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     }
 
     // Set up graceful shutdown
-    let shutdown = session::GracefulShutdown::new();
+    let _shutdown = session::GracefulShutdown::new();
 
     // Launch the TUI
     cc_tui::main_loop::run_tui()?;

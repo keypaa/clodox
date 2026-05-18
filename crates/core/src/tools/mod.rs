@@ -5,11 +5,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::messages::{
-    AssistantMessage, AttachmentMessage, ContentBlockParam, ProgressMessage, SystemMessage,
+    AssistantMessage, AttachmentMessage, ContentBlockParam, SystemMessage,
     UserMessage,
 };
 use crate::permissions::{PermissionResult, ToolPermissionContext};
-use crate::types::{QuerySource, SpinnerMode, ThemeName, ValidationResult};
+use crate::types::{QuerySource, ValidationResult};
 
 /// JSON Schema for tool input (raw format).
 pub type ToolInputJsonSchema = serde_json::Value;
@@ -325,7 +325,7 @@ pub trait Tool: Send + Sync + std::fmt::Debug {
     async fn check_permissions(
         &self,
         input: &serde_json::Value,
-        context: &ToolUseContext,
+        _context: &ToolUseContext,
     ) -> anyhow::Result<PermissionResult> {
         Ok(PermissionResult::Allow {
             updated_input: Some(input.clone()),

@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use cc_core::messages::{AssistantMessage, ContentBlockParam, Message, UserMessage};
+use cc_core::messages::{ContentBlockParam, Message, UserMessage};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 /// Compaction strategy to use when context is full.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

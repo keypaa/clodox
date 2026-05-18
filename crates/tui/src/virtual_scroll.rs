@@ -5,7 +5,7 @@ use ratatui::widgets::Widget;
 use std::collections::HashMap;
 
 use crate::theme::{Theme, Themeable};
-use crate::components::messages::row::{RenderMessage, render_message_row};
+use crate::components::messages::row::RenderMessage;
 
 const DEFAULT_CAP: usize = 200;
 const TRANSCRIPT_CAP: usize = 30;
@@ -364,7 +364,7 @@ fn estimate_message_height(message: &RenderMessage, width: u16) -> u16 {
             }
         }
         RenderMessage::RateLimit {
-            text,
+            text: _,
             upgrade_hint,
         } => {
             let mut h = 1;
@@ -550,7 +550,7 @@ fn render_message_to_buffer(
 ) {
     let lines = message_to_lines(message, area.width, theme, is_selected);
 
-    let y_end = area.y.min(buf.area.height.saturating_sub(1))
+    let _y_end = area.y.min(buf.area.height.saturating_sub(1))
         + area.height.min(buf.area.height.saturating_sub(area.y));
 
     for (i, line) in lines.iter().enumerate() {

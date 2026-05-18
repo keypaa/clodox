@@ -1,5 +1,5 @@
 use cc_core::messages::{
-    AssistantMessage, ContentBlockParam, Message, StopReason, SystemMessage, UserMessage,
+    ContentBlockParam, Message, SystemMessage,
 };
 use tracing::{debug, info};
 
@@ -295,7 +295,7 @@ fn extract_file_path(msg: &Message) -> Option<String> {
         Message::User(u) => {
             for block in &u.content {
                 if let ContentBlockParam::ToolResult {
-                    tool_use_id,
+                    tool_use_id: _,
                     content,
                     ..
                 } = block

@@ -258,7 +258,7 @@ impl<'a> StatusLineWidget<'a> {
 }
 
 impl Themeable for StatusLineWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         let lines = self.status.render_lines();
         if lines.is_empty() {
             return;

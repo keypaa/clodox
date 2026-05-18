@@ -2,11 +2,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Widget, Wrap},
+    widgets::{Paragraph, Wrap},
 };
 
 /// Helper to build a styled paragraph.
-pub fn styled_paragraph(text: &str, style: Style, wrap: bool) -> Paragraph {
+pub fn styled_paragraph(text: &str, style: Style, wrap: bool) -> Paragraph<'_> {
     let mut p = Paragraph::new(Span::styled(text, style));
     if wrap {
         p = p.wrap(Wrap { trim: false });

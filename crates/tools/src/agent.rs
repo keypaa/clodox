@@ -523,7 +523,7 @@ impl AgentTool {
                 // Check if required MCP servers have tools available
                 if let Some(service) = mcp_service {
                     let mut all_matched = true;
-                    for pattern in required {
+                    for _pattern in required {
                         let mut found = false;
                         // Check all remote servers for matching pattern
                         // In a full implementation, we'd check local servers too
@@ -678,7 +678,7 @@ impl AgentTool {
         };
 
         // Create abort channel for the agent
-        let (abort_tx, abort_rx) = tokio::sync::watch::channel(false);
+        let (_abort_tx, abort_rx) = tokio::sync::watch::channel(false);
 
         // Create isolated QueryEngine
         let mut query_engine = QueryEngine::new(query_config, abort_rx)
@@ -846,7 +846,7 @@ impl AgentTool {
     fn build_agent_system_prompt(
         &self,
         agent: &FullAgentDefinition,
-        prompt: &str,
+        _prompt: &str,
         context: &ToolUseContext,
     ) -> Vec<SystemPromptBlock> {
         let mut parts = Vec::new();
@@ -942,7 +942,7 @@ impl AgentTool {
                         match c {
                             ContentBlockParam::Text { text } => serde_json::json!({"type": "text", "text": text}),
                             ContentBlockParam::ToolUse { id, name, input } => serde_json::json!({"type": "tool_use", "id": id, "name": name, "input": input}),
-                            ContentBlockParam::Thinking { thinking, signature } => serde_json::json!({"type": "thinking", "thinking": thinking}),
+                            ContentBlockParam::Thinking { thinking, signature: _ } => serde_json::json!({"type": "thinking", "thinking": thinking}),
                             _ => serde_json::json!({"type": "unknown"}),
                         }
                     }).collect::<Vec<_>>(),
@@ -1151,7 +1151,7 @@ impl AgentTool {
         };
 
         // Create abort channel for the agent
-        let (abort_tx, abort_rx) = tokio::sync::watch::channel(false);
+        let (_abort_tx, abort_rx) = tokio::sync::watch::channel(false);
 
         // Create isolated QueryEngine
         let mut query_engine = QueryEngine::new(query_config, abort_rx)
@@ -1409,12 +1409,12 @@ impl AgentTool {
         model: &str,
         abort_rx: watch::Receiver<bool>,
         agent_id: &str,
-        output_file: &str,
+        _output_file: &str,
         registry: &Arc<AsyncAgentRegistry>,
-        color_manager: &Arc<AgentColorManager>,
+        _color_manager: &Arc<AgentColorManager>,
         effective_cwd: &str,
         worktree_branch: Option<&str>,
-        worktree_head: Option<&str>,
+        _worktree_head: Option<&str>,
     ) -> anyhow::Result<String> {
         let start = std::time::Instant::now();
 
@@ -1560,7 +1560,7 @@ impl AgentTool {
         let total_tokens = total_input_tokens + total_output_tokens;
 
         // Write transcript
-        let transcript_path = Self::write_agent_transcript_static(
+        let _transcript_path = Self::write_agent_transcript_static(
             agent_id,
             agent,
             prompt,
@@ -1604,9 +1604,9 @@ impl AgentTool {
         model: &str,
         abort_rx: watch::Receiver<bool>,
         agent_id: &str,
-        output_file: &str,
+        _output_file: &str,
         registry: &Arc<AsyncAgentRegistry>,
-        color_manager: &Arc<AgentColorManager>,
+        _color_manager: &Arc<AgentColorManager>,
     ) -> anyhow::Result<String> {
         let start = std::time::Instant::now();
 
@@ -1804,7 +1804,7 @@ impl AgentTool {
     /// Build agent system prompt from ToolUseOptions.
     fn build_agent_system_prompt_from_options(
         agent: &FullAgentDefinition,
-        prompt: &str,
+        _prompt: &str,
         options: &cc_core::tools::ToolUseOptions,
     ) -> Vec<SystemPromptBlock> {
         let mut parts = Vec::new();
@@ -1895,7 +1895,7 @@ impl AgentTool {
                         match c {
                             ContentBlockParam::Text { text } => serde_json::json!({"type": "text", "text": text}),
                             ContentBlockParam::ToolUse { id, name, input } => serde_json::json!({"type": "tool_use", "id": id, "name": name, "input": input}),
-                            ContentBlockParam::Thinking { thinking, signature } => serde_json::json!({"type": "thinking", "thinking": thinking}),
+                            ContentBlockParam::Thinking { thinking, signature: _ } => serde_json::json!({"type": "thinking", "thinking": thinking}),
                             _ => serde_json::json!({"type": "unknown"}),
                         }
                     }).collect::<Vec<_>>(),
@@ -2410,7 +2410,7 @@ async fn run_git_command(git_root: &str, args: &[&str]) -> anyhow::Result<String
 }
 
 /// Check if a worktree has changes compared to its head commit.
-async fn has_worktree_changes(worktree_path: &str, head_commit: &str) -> bool {
+async fn has_worktree_changes(worktree_path: &str, _head_commit: &str) -> bool {
     let result = run_git_command(
         worktree_path,
         &["diff", "--quiet", "HEAD"],
@@ -2587,7 +2587,7 @@ pub fn build_forked_messages(
                                 text: text.clone(),
                             });
                         }
-                        ContentBlockParam::ToolUse { id, name, input } => {
+                        ContentBlockParam::ToolUse { id: _, name, input: _ } => {
                             // Add placeholder tool_result for each tool_use
                             tool_use_counter += 1;
                             user_content.push(ContentBlockParam::ToolResult {
@@ -2622,7 +2622,7 @@ pub fn build_forked_messages(
                     ));
                 }
             }
-            cc_core::messages::Message::User(user) => {
+            cc_core::messages::Message::User(_user) => {
                 // Skip the original user message (we'll add our own with fork directive)
                 // But keep attachment/system messages
                 messages.push(msg.clone());
@@ -3153,7 +3153,7 @@ pub struct HandoffAssessment {
 /// Uses secondary model call for classification.
 pub fn assess_handoff_quality(
     transcript: &str,
-    original_prompt: &str,
+    _original_prompt: &str,
     tool_use_count: usize,
 ) -> HandoffAssessment {
     // Simple heuristic-based assessment (full impl would use secondary model call)
@@ -3365,9 +3365,9 @@ pub fn is_remote_agent_available() -> bool {
 /// Stub for external builds — returns error if remote not available.
 pub async fn teleport_to_remote(
     agent_id: &str,
-    agent_type: &str,
-    prompt: &str,
-    model: &str,
+    _agent_type: &str,
+    _prompt: &str,
+    _model: &str,
 ) -> anyhow::Result<RemoteAgentResult> {
     if !is_remote_agent_available() {
         return Err(anyhow::anyhow!(

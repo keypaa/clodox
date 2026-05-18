@@ -1,5 +1,5 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use unicode_segmentation::UnicodeSegmentation;
@@ -423,7 +423,7 @@ impl<'a> TextInputWidget<'a> {
 
                 result.push(Line::from(spans));
             } else {
-                let mut spans = vec![
+                let spans = vec![
                     Span::raw("  "),
                     Span::styled(
                         line_text.clone(),
@@ -439,7 +439,7 @@ impl<'a> TextInputWidget<'a> {
 }
 
 impl Themeable for TextInputWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         let lines = self.render_lines();
         let y_end = (area.y + area.height).min(buf.area.height);
         for (i, line) in lines.iter().enumerate() {

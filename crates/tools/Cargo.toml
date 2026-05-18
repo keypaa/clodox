@@ -23,3 +23,5 @@ url.workspace = true
 lru.workspace = true
 chrono.workspace = true
 futures.workspace = true
+[lints]
+workspace = true

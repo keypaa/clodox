@@ -165,7 +165,7 @@ impl Tool for BashTool {
             std::thread::spawn(move || {
                 let _ = Self::execute_command(&cmd, timeout_val, None);
             });
-            let task_id = uuid::Uuid::new_v4().to_string();
+            let _task_id = uuid::Uuid::new_v4().to_string();
             (
                 String::new(),
                 String::new(),

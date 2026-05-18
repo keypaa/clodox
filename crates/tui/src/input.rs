@@ -2,8 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, KeyboardEnhancementFlags,
-    MediaKeyCode, ModifierKeyCode, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseEvent,
 };
 
 /// Key event wrapper with all modifiers.
@@ -372,7 +371,7 @@ impl InputHandler {
         match event {
             Event::Key(key_event) => self.process_key(key_event),
             Event::Mouse(mouse_event) => self.process_mouseouse(mouse_event),
-            Event::Paste(text) => Some(InputAction::InsertChar('\n')), // Placeholder
+            Event::Paste(_text) => Some(InputAction::InsertChar('\n')), // Placeholder
             Event::FocusGained | Event::FocusLost => None,
             Event::Resize(_, _) => None,
         }

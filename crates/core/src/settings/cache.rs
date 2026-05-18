@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
-use serde::Serialize;
 
 use crate::types::SettingSource;
 

@@ -209,7 +209,7 @@ impl Command {
 
     pub fn is_enabled(&self) -> bool {
         match self {
-            Command::Prompt(cmd) => true,
+            Command::Prompt(_cmd) => true,
         }
     }
 

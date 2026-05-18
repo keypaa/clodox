@@ -9,10 +9,10 @@ use crossterm::{
         PushKeyboardEnhancementFlags,
     },
     terminal::{
-        disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, EnterAlternateScreen,
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
-    ExecutableCommand, QueueableCommand,
+    ExecutableCommand,
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 

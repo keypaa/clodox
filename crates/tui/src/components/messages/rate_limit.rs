@@ -1,12 +1,11 @@
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
 
 use crate::theme::Theme;
-use crate::components::box_widget::text_style;
 
 /// Render a rate limit message.
 ///

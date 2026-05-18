@@ -211,7 +211,7 @@ impl ResumePicker {
             .fg(ratatui::style::Color::White)
             .add_modifier(Modifier::DIM);
 
-        let mut buttons = vec![
+        let buttons = vec![
             Span::styled("[enter] ", key_style),
             Span::styled("Resume", label_style),
             Span::raw("    "),
@@ -278,7 +278,7 @@ impl<'a> ResumePickerWidget<'a> {
 }
 
 impl Themeable for ResumePickerWidget<'_> {
-    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+    fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, _theme: &Theme) {
         // Clear the entire screen first to remove any leftover content from previous modes
         let bg_style = Style::default().bg(ratatui::style::Color::Black);
         for y in 0..area.height {

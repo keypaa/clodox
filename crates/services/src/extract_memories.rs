@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use cc_core::messages::Message;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Extracted memory entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]

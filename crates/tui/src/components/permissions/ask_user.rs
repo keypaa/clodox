@@ -1,7 +1,5 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Widget;
 
 use crate::theme::{Theme, Themeable};
 use crate::components::permissions::dialog::{PermissionDialog, PermissionDialogWidget, PermissionAction};
@@ -19,7 +17,7 @@ impl AskUserDialog {
     pub fn new(question: &str) -> Self {
         let risk_level = RiskLevel::Low;
 
-        let mut preview = question.to_string();
+        let preview = question.to_string();
 
         let inner = PermissionDialog::new(
             "Question",
@@ -79,7 +77,7 @@ impl Themeable for AskUserDialog {
                 let suggestion_style = Style::default()
                     .fg(theme.colors.suggestion)
                     .add_modifier(Modifier::BOLD);
-                let number_style = Style::default()
+                let _number_style = Style::default()
                     .fg(theme.colors.success)
                     .add_modifier(Modifier::BOLD);
 

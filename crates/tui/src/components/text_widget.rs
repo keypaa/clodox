@@ -114,12 +114,12 @@ impl TextWidget {
     }
 
     /// Convert to a ratatui Span.
-    pub fn to_span(&self) -> Span {
+    pub fn to_span(&self) -> Span<'_> {
         Span::styled(&self.content, self.style())
     }
 
     /// Convert to a ratatui Line.
-    pub fn to_line(&self) -> Line {
+    pub fn to_line(&self) -> Line<'_> {
         Line::from(self.to_span())
     }
 }

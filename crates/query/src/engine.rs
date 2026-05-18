@@ -9,7 +9,6 @@ use cc_core::tools::Tools;
 use futures::Stream;
 use futures::StreamExt;
 use tokio::sync::watch;
-use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::api_client::{build_request, ApiClient, ApiConfig};
@@ -195,7 +194,7 @@ impl QueryEngine {
         let api_config = self.config.api_config.clone();
 
         let stream = async_stream::stream! {
-            let mut current_model = config.model.clone();
+            let current_model = config.model.clone();
             let mut max_consecutive_errors = 0;
 
             loop {

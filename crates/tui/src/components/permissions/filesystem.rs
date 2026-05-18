@@ -1,7 +1,4 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Widget;
 
 use crate::theme::{Theme, Themeable};
 use crate::components::permissions::dialog::{PermissionDialog, PermissionDialogWidget, PermissionAction};

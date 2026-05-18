@@ -1,11 +1,10 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Session runner state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

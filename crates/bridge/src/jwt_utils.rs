@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 /// JWT claims for bridge authentication.
 #[derive(Debug, Clone, Serialize, Deserialize)]

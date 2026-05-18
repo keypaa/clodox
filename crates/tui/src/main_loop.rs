@@ -5,20 +5,12 @@ use std::time::Duration;
 
 use cc_core::messages::{ContentBlockParam, Message, UserMessage};
 use cc_core::state::QueryState;
-use cc_core::permissions::{PermissionMode, RiskLevel, ToolPermissionContext};
+use cc_core::permissions::{PermissionMode, ToolPermissionContext};
 use cc_query::engine::{QueryConfig, QueryEngine, QueryEvent, TokenBudget};
 use cc_query::api_client::ApiConfig;
 use cc_query::retry::RetryOptions;
 use cc_query::system_prompt::{assemble_system_prompt, SystemPromptConfig};
 use cc_tools::registry::ToolRegistry;
-use crossterm::event::Event;
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    style::{Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
-};
 use tokio::sync::mpsc;
 
 use crate::input::{InputAction, InputHandler};
@@ -28,7 +20,7 @@ use crate::theme::Theme;
 use crate::screens::{ReplScreen, FullscreenScreen, FullscreenMode};
 use crate::components::prompt_input::autocomplete::AutocompleteState;
 use crate::query_events::StreamingAccumulator;
-use crate::components::permissions::dialog::{PermissionAction, PermissionDialog, PermissionDialogWidget};
+use crate::components::permissions::dialog::PermissionAction;
 
 enum ScreenMode {
     Repl(ReplScreen),
@@ -410,7 +402,7 @@ impl TuiApp {
             InputAction::Confirm(yes) => {
                 let mut state = write_state(&self.state);
                 if state.pending_permission_dialog.is_some() {
-                    let action = if yes {
+                    let _action = if yes {
                         PermissionAction::AllowOnce
                     } else {
                         PermissionAction::Deny

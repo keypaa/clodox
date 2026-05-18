@@ -17,3 +17,5 @@ tracing.workspace = true
 ratatui = "0.29"
 strsim.workspace = true
 dirs.workspace = true
+[lints]
+workspace = true

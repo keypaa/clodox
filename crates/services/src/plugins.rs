@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Plugin manifest loaded from a plugin directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
