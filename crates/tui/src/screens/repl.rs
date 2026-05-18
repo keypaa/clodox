@@ -1,4 +1,4 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
@@ -144,68 +144,35 @@ impl ReplScreen {
         let left_inner = left_block.inner(layout[0]);
         frame.render_widget(left_block, layout[0]);
 
-        let dim_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
-            .add_modifier(Modifier::DIM);
+        // Split left chunk vertically
+        let left_sub_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(2),
+            ])
+            .split(left_inner);
 
-        let welcome_style = Style::default()
-            .fg(ratatui::style::Color::White)
-            .add_modifier(Modifier::BOLD);
+        // Welcome text with raw string to preserve spaces
+        let welcome_text = r#"Welcome back my Thane!
 
-        let alien_style = Style::default().fg(accent_color);
+   ▄   ▄   
+  ███████  
+ █████████ 
+ ██ ███ ██ 
+  █   █    
+"#;
 
-        let left_width = left_inner.width as usize;
+        let welcome_paragraph = Paragraph::new(welcome_text)
+            .style(Style::default().fg(accent_color))
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(welcome_paragraph, left_sub_layout[0]);
 
-        let welcome = "Welcome back my Thane!";
-        let welcome_padding = left_width.saturating_sub(welcome.len()) / 2;
-
-        // Exact hardcoded alien art
-        let alien_art = vec![
-            "  █     █  ",
-            "   █   █   ",
-            "  ███████  ",
-            " ██ ███ ██ ",
-            "███████████",
-            "█ ███████ █",
-            "█ █     █ █",
-            "   ██ ██   ",
-        ];
-
-        let mut left_content = Vec::new();
-
-        // Welcome message (centered)
-        left_content.push(Line::from(vec![
-            Span::raw(" ".repeat(welcome_padding)),
-            Span::styled(welcome, welcome_style),
-        ]));
-
-        // Empty line
-        left_content.push(Line::from(vec![Span::raw("")]));
-
-        // ASCII alien (centered)
-        for alien_line in &alien_art {
-            let alien_padding = left_width.saturating_sub(alien_line.len()) / 2;
-            left_content.push(Line::from(vec![
-                Span::raw(" ".repeat(alien_padding)),
-                Span::styled(*alien_line, alien_style),
-            ]));
-        }
-
-        // Empty line
-        left_content.push(Line::from(vec![Span::raw("")]));
-
-        // Model info (left-aligned)
-        left_content.push(Line::from(vec![
-            Span::styled("Sonnet 4.6 · Claude Pro · Organization", dim_style),
-        ]));
-
-        // Path (10 literal spaces to push right)
-        left_content.push(Line::from(vec![
-            Span::styled("          ~/GitHub/simplespace", dim_style),
-        ]));
-
-        let left_paragraph = Paragraph::new(left_content);
-        frame.render_widget(left_paragraph, left_inner);
+        // Bottom info text
+        let info_text = "Sonnet 4.6 · Claude Pro · Organization\n          ~/GitHub/simplespace";
+        let info_paragraph = Paragraph::new(info_text)
+            .style(Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM));
+        frame.render_widget(info_paragraph, left_sub_layout[1]);
 
         // Right chunk split vertically
         let right_layout = Layout::default()
@@ -215,6 +182,10 @@ impl ReplScreen {
                 Constraint::Min(0),
             ])
             .split(layout[1]);
+
+        let dim_style = Style::default()
+            .fg(ratatui::style::Color::DarkGray)
+            .add_modifier(Modifier::DIM);
 
         let tips_style = Style::default()
             .fg(accent_color)
