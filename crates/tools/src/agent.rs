@@ -1063,6 +1063,538 @@ impl AgentTool {
         }))
     }
 
+    /// Run a sync agent with worktree isolation and cwd override.
+    async fn run_sync_agent_with_worktree(
+        &self,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        context: &ToolUseContext,
+        model: &str,
+        on_progress: Option<Arc<dyn Fn(ToolProgress) + Send + Sync>>,
+        worktree: Option<&WorktreeInfo>,
+        effective_cwd: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let start = std::time::Instant::now();
+        let agent_id = uuid::Uuid::new_v4().to_string();
+
+        info!(
+            agent_type = %agent.agent_type,
+            model = %model,
+            description = %description,
+            cwd = %effective_cwd,
+            "Starting sync agent with worktree isolation"
+        );
+
+        // Set agent color
+        if let Some(ref color) = agent.color {
+            self.color_manager
+                .set_color(&agent.agent_type, color)
+                .await;
+        }
+
+        // Build agent-specific tool pool
+        let agent_tools = self.build_agent_tool_pool(agent, context);
+
+        // Build agent-specific system prompt with worktree context
+        let mut system_prompt = self.build_agent_system_prompt(agent, prompt, context);
+
+        // Inject worktree notice if applicable
+        if let Some(wt) = worktree {
+            let parent_cwd = std::env::current_dir()
+                .ok()
+                .and_then(|p| p.to_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            let notice = build_worktree_notice(&parent_cwd, &wt.worktree_path);
+            system_prompt.push(SystemPromptBlock::Text {
+                text: notice,
+                cache_control: None,
+            });
+        }
+
+        // Inject cwd into system prompt
+        system_prompt.push(SystemPromptBlock::Text {
+            text: format!("Current working directory: {effective_cwd}"),
+            cache_control: None,
+        });
+
+        // Create API config from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+        let api_config = ApiConfig {
+            api_key,
+            base_url: std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| "https://api.anthropic.com".to_string()),
+            ..Default::default()
+        };
+
+        // Create query config
+        let query_config = QueryConfig {
+            model: model.to_string(),
+            max_tokens: 4096,
+            system_prompt,
+            tools: agent_tools,
+            permission_context: cc_core::permissions::ToolPermissionContext::default(),
+            temperature: None,
+            thinking_enabled: context.options.thinking_config.enabled,
+            thinking_budget: context.options.thinking_config.budget_tokens,
+            token_budget: TokenBudget::new(None),
+            api_config,
+            retry_options: RetryOptions {
+                max_retries: 3,
+                model: model.to_string(),
+                fallback_model: None,
+                initial_consecutive_529: 0,
+            },
+            verbose: context.options.verbose,
+            debug: context.options.debug,
+        };
+
+        // Create abort channel for the agent
+        let (abort_tx, abort_rx) = tokio::sync::watch::channel(false);
+
+        // Create isolated QueryEngine
+        let mut query_engine = QueryEngine::new(query_config, abort_rx)
+            .map_err(|e| anyhow::anyhow!("Failed to create QueryEngine: {e}"))?;
+
+        // Create user message from prompt
+        let user_msg = UserMessage {
+            id: uuid::Uuid::new_v4(),
+            content: vec![ContentBlockParam::Text {
+                text: prompt.to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+            is_meta: None,
+            origin_query_source: None,
+            effort: None,
+        };
+
+        // Run the query loop with cwd override
+        let mut event_stream = std::pin::pin!(run_with_cwd_override(effective_cwd, async {
+            query_engine.submit_message(user_msg).await
+        }).await);
+
+        let mut all_messages = Vec::new();
+        let mut total_tool_use_count = 0;
+        let mut total_input_tokens = 0u64;
+        let mut total_output_tokens = 0u64;
+        let mut final_content = String::new();
+        let mut progress_tracker = AgentProgressTracker::new(description.to_string());
+
+        // Emit initial progress
+        if let Some(ref cb) = on_progress {
+            cb(progress_tracker.to_progress(&agent_id));
+        }
+
+        while let Some(event_result) = event_stream.next().await {
+            match event_result {
+                Ok(event) => match event {
+                    QueryEvent::Stream(core_event) => {
+                        if let cc_core::messages::StreamEvent::MessageDelta { usage, .. } = &core_event {
+                            total_input_tokens += usage.input_tokens;
+                            total_output_tokens += usage.output_tokens;
+                        }
+                        progress_tracker.update_from_stream(&core_event);
+                        if let Some(ref cb) = on_progress {
+                            cb(progress_tracker.to_progress(&agent_id));
+                        }
+                    }
+                    QueryEvent::TurnComplete { message } => {
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::ToolCallsPending { tool_calls, .. } => {
+                        total_tool_use_count += tool_calls.len();
+                        progress_tracker.record_tool_calls(&tool_calls);
+                        if let Some(ref cb) = on_progress {
+                            cb(progress_tracker.to_progress(&agent_id));
+                        }
+                    }
+                    QueryEvent::ToolResult { tool_name, success, .. } => {
+                        debug!(%tool_name, success, "Agent tool result");
+                        progress_tracker.record_tool_result(&tool_name, success);
+                    }
+                    QueryEvent::MaxTokensReached { message } => {
+                        warn!("Agent hit max tokens limit");
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::Aborted => {
+                        info!("Agent was aborted");
+                        progress_tracker.mark_aborted();
+                        break;
+                    }
+                },
+                Err(e) => {
+                    warn!(error = %e, "Agent query error");
+                    progress_tracker.mark_error(&e.to_string());
+                    break;
+                }
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let total_tokens = total_input_tokens + total_output_tokens;
+
+        // Write transcript to file
+        let transcript_path = self.write_agent_transcript(
+            &agent_id,
+            agent,
+            prompt,
+            description,
+            &all_messages,
+            total_tool_use_count,
+            total_tokens,
+            duration_ms,
+        );
+
+        info!(
+            agent_type = %agent.agent_type,
+            duration_ms,
+            tool_uses = total_tool_use_count,
+            tokens = total_tokens,
+            "Sync agent completed"
+        );
+
+        Ok(serde_json::json!({
+            "status": "completed",
+            "agentId": agent_id,
+            "agentType": agent.agent_type,
+            "model": model,
+            "prompt": prompt,
+            "description": description,
+            "content": final_content,
+            "totalToolUseCount": total_tool_use_count,
+            "totalDurationMs": duration_ms,
+            "totalTokens": total_tokens,
+            "output_file": transcript_path,
+            "worktree_path": worktree.map(|wt| wt.worktree_path.clone()),
+        }))
+    }
+
+    /// Run an async agent with worktree isolation and cwd override.
+    async fn run_async_agent_with_worktree(
+        &self,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        context: &ToolUseContext,
+        model: &str,
+        worktree: Option<&WorktreeInfo>,
+        effective_cwd: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let agent_id = uuid::Uuid::new_v4().to_string();
+        let output_file = format!(".claude/agents/{agent_id}/transcript.json");
+
+        info!(
+            agent_type = %agent.agent_type,
+            model = %model,
+            description = %description,
+            agent_id = %agent_id,
+            cwd = %effective_cwd,
+            "Starting async agent with worktree isolation"
+        );
+
+        // Set agent color
+        if let Some(ref color) = agent.color {
+            self.color_manager
+                .set_color(&agent.agent_type, color)
+                .await;
+        }
+
+        // Create independent abort channel (not linked to parent's)
+        let (abort_tx, abort_rx) = watch::channel(false);
+
+        // Write agent metadata before spawning
+        self.write_agent_metadata(&agent_id, agent, prompt, description, model);
+
+        // Clone data for the background task
+        let agent_clone = agent.clone();
+        let prompt_clone = prompt.to_string();
+        let description_clone = description.to_string();
+        let model_clone = model.to_string();
+        let context_options = context.options.clone();
+        let registry_clone = self.async_registry.clone();
+        let color_manager_clone = self.color_manager.clone();
+        let agent_id_clone = agent_id.clone();
+        let output_file_clone = output_file.clone();
+        let effective_cwd_clone = effective_cwd.to_string();
+        let worktree_branch = worktree.map(|wt| wt.worktree_branch.clone());
+        let worktree_head = worktree.map(|wt| wt.head_commit.clone());
+
+        // Spawn the background task
+        tokio::spawn(async move {
+            let result = Self::run_async_agent_loop_with_worktree(
+                &agent_clone,
+                &prompt_clone,
+                &description_clone,
+                &context_options,
+                &model_clone,
+                abort_rx,
+                &agent_id_clone,
+                &output_file_clone,
+                &registry_clone,
+                &color_manager_clone,
+                &effective_cwd_clone,
+                worktree_branch.as_deref(),
+                worktree_head.as_deref(),
+            )
+            .await;
+
+            match result {
+                Ok(summary) => {
+                    info!(agent_id = %agent_id_clone, "Async agent completed: {summary}");
+                }
+                Err(e) => {
+                    warn!(agent_id = %agent_id_clone, error = %e, "Async agent failed");
+                }
+            }
+        });
+
+        // Register the agent
+        let state = AsyncAgentState {
+            agent_id: agent_id.clone(),
+            agent_type: agent.agent_type.clone(),
+            description: description.to_string(),
+            prompt: prompt.to_string(),
+            model: model.to_string(),
+            status: AsyncAgentStatus::Running,
+            output_file: output_file.clone(),
+            abort_tx,
+            start_time: chrono::Utc::now(),
+            summary: None,
+        };
+        self.async_registry.register(state).await;
+
+        // Emit initial progress (via log since we're in background)
+        info!(
+            agent_id = %agent_id,
+            description = %description,
+            "Async agent launched in background"
+        );
+
+        let can_read_output = context.options.tools.iter().any(|t| {
+            t.name() == "Read" || t.name() == "Bash"
+        });
+
+        Ok(serde_json::json!({
+            "status": "async_launched",
+            "agentId": agent_id,
+            "description": description,
+            "prompt": prompt,
+            "outputFile": output_file,
+            "canReadOutputFile": can_read_output,
+            "worktree_path": worktree.map(|wt| wt.worktree_path.clone()),
+        }))
+    }
+
+    /// The actual async agent loop with worktree isolation (runs in background tokio task).
+    async fn run_async_agent_loop_with_worktree(
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        options: &cc_core::tools::ToolUseOptions,
+        model: &str,
+        abort_rx: watch::Receiver<bool>,
+        agent_id: &str,
+        output_file: &str,
+        registry: &Arc<AsyncAgentRegistry>,
+        color_manager: &Arc<AgentColorManager>,
+        effective_cwd: &str,
+        worktree_branch: Option<&str>,
+        worktree_head: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let start = std::time::Instant::now();
+
+        // Build agent-specific tool pool
+        let agent_tools = Self::build_agent_tool_pool_from_options(agent, options);
+
+        // Build agent-specific system prompt with worktree context
+        let mut system_prompt = Self::build_agent_system_prompt_from_options(agent, prompt, options);
+
+        // Inject worktree notice if applicable
+        if let Some(branch) = worktree_branch {
+            let notice = format!(
+                "You are running in an isolated git worktree on branch '{branch}'.\n\
+                All file operations are confined to this worktree.\n\
+                Changes you make will not affect the parent repository until merged.",
+            );
+            system_prompt.push(SystemPromptBlock::Text {
+                text: notice,
+                cache_control: None,
+            });
+        }
+
+        // Inject cwd into system prompt
+        system_prompt.push(SystemPromptBlock::Text {
+            text: format!("Current working directory: {effective_cwd}"),
+            cache_control: None,
+        });
+
+        // Create API config from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+        let api_config = ApiConfig {
+            api_key,
+            base_url: std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| "https://api.anthropic.com".to_string()),
+            ..Default::default()
+        };
+
+        // Create query config
+        let query_config = QueryConfig {
+            model: model.to_string(),
+            max_tokens: 4096,
+            system_prompt,
+            tools: agent_tools,
+            permission_context: cc_core::permissions::ToolPermissionContext::default(),
+            temperature: None,
+            thinking_enabled: options.thinking_config.enabled,
+            thinking_budget: options.thinking_config.budget_tokens,
+            token_budget: TokenBudget::new(None),
+            api_config,
+            retry_options: RetryOptions {
+                max_retries: 3,
+                model: model.to_string(),
+                fallback_model: None,
+                initial_consecutive_529: 0,
+            },
+            verbose: options.verbose,
+            debug: options.debug,
+        };
+
+        // Create isolated QueryEngine
+        let mut query_engine = QueryEngine::new(query_config, abort_rx)
+            .map_err(|e| anyhow::anyhow!("Failed to create QueryEngine: {e}"))?;
+
+        // Create user message from prompt
+        let user_msg = UserMessage {
+            id: uuid::Uuid::new_v4(),
+            content: vec![ContentBlockParam::Text {
+                text: prompt.to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+            is_meta: None,
+            origin_query_source: None,
+            effort: None,
+        };
+
+        // Run the query loop with cwd override
+        let mut event_stream = std::pin::pin!(run_with_cwd_override(effective_cwd, async {
+            query_engine.submit_message(user_msg).await
+        }).await);
+
+        let mut all_messages = Vec::new();
+        let mut total_tool_use_count = 0;
+        let mut total_input_tokens = 0u64;
+        let mut total_output_tokens = 0u64;
+        let mut final_content = String::new();
+        let mut progress_tracker = AgentProgressTracker::new(description.to_string());
+
+        while let Some(event_result) = event_stream.next().await {
+            match event_result {
+                Ok(event) => match event {
+                    QueryEvent::Stream(core_event) => {
+                        if let cc_core::messages::StreamEvent::MessageDelta { usage, .. } = &core_event {
+                            total_input_tokens += usage.input_tokens;
+                            total_output_tokens += usage.output_tokens;
+                        }
+                        progress_tracker.update_from_stream(&core_event);
+                    }
+                    QueryEvent::TurnComplete { message } => {
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::ToolCallsPending { tool_calls, .. } => {
+                        total_tool_use_count += tool_calls.len();
+                        progress_tracker.record_tool_calls(&tool_calls);
+                    }
+                    QueryEvent::ToolResult { tool_name, success, .. } => {
+                        debug!(%tool_name, success, "Async agent tool result");
+                        progress_tracker.record_tool_result(&tool_name, success);
+                    }
+                    QueryEvent::MaxTokensReached { message } => {
+                        warn!("Async agent hit max tokens limit");
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::Aborted => {
+                        info!("Async agent was aborted");
+                        progress_tracker.mark_aborted();
+                        break;
+                    }
+                },
+                Err(e) => {
+                    warn!(error = %e, "Async agent query error");
+                    progress_tracker.mark_error(&e.to_string());
+                    break;
+                }
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let total_tokens = total_input_tokens + total_output_tokens;
+
+        // Write transcript
+        let transcript_path = Self::write_agent_transcript_static(
+            agent_id,
+            agent,
+            prompt,
+            description,
+            &all_messages,
+            total_tool_use_count,
+            total_tokens,
+            duration_ms,
+        );
+
+        // Generate summary for notification
+        let summary = if final_content.is_empty() {
+            "Agent completed with no output".to_string()
+        } else if final_content.len() > 500 {
+            format!("{}...", &final_content[..500])
+        } else {
+            final_content.clone()
+        };
+
+        // Update registry status
+        registry.update_status(agent_id, AsyncAgentStatus::Completed).await;
+
+        info!(
+            agent_type = %agent.agent_type,
+            agent_id = %agent_id,
+            duration_ms,
+            tool_uses = total_tool_use_count,
+            tokens = total_tokens,
+            "Async agent with worktree completed"
+        );
+
+        Ok(summary)
+    }
+
     /// The actual async agent loop (runs in background tokio task).
     async fn run_async_agent_loop_with_options(
         agent: &FullAgentDefinition,
@@ -1507,29 +2039,54 @@ impl Tool for AgentTool {
         );
 
         // Handle isolation mode (worktree)
-        if let Some(mode) = isolation {
+        let worktree_info = if let Some(mode) = isolation {
             if mode == "worktree" {
-                // In a full implementation, create a git worktree
-                info!("Worktree isolation requested (not yet implemented)");
+                let slug = format!("agent-{}", &agent_id[..8.min(agent_id.len())]);
+                match create_agent_worktree(&slug).await {
+                    Ok(info) => {
+                        info!(worktree_path = %info.worktree_path, branch = %info.worktree_branch, "Created worktree for agent");
+                        Some(info)
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to create worktree, falling back to current directory");
+                        None
+                    }
+                }
             } else if mode == "remote" {
-                // In a full implementation, spawn remote agent
                 info!("Remote isolation requested (not yet implemented)");
+                None
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
-        // Handle cwd override
-        if let Some(_cwd_path) = cwd {
-            debug!("CWD override requested: {}", _cwd_path);
-        }
+        // Handle cwd override (worktree takes precedence)
+        let effective_cwd = if let Some(ref wt) = worktree_info {
+            wt.worktree_path.clone()
+        } else if let Some(cwd_path) = cwd {
+            cwd_path.to_string()
+        } else {
+            std::env::current_dir()
+                .ok()
+                .and_then(|p| p.to_str().map(|s| s.to_string()))
+                .unwrap_or_default()
+        };
 
         // Run agent (sync or async)
         let result = if run_in_background || selected_agent.background {
-            self.run_async_agent(selected_agent, prompt, description, context, &model)
+            self.run_async_agent_with_worktree(selected_agent, prompt, description, context, &model, worktree_info.as_ref(), &effective_cwd)
                 .await?
         } else {
-            self.run_sync_agent(selected_agent, prompt, description, context, &model, on_progress)
+            self.run_sync_agent_with_worktree(selected_agent, prompt, description, context, &model, on_progress, worktree_info.as_ref(), &effective_cwd)
                 .await?
         };
+
+        // Auto-cleanup worktree if agent completed without changes
+        if let Some(ref wt) = worktree_info {
+            cleanup_worktree_if_no_changes(wt).await;
+        }
 
         Ok(ToolResult {
             data: result,
@@ -1759,6 +2316,196 @@ impl Tool for AgentTool {
             is_error: None,
         }
     }
+}
+
+// =========================================================================
+// Worktree Isolation (Phase 10.3d)
+// =========================================================================
+
+/// Information about a created worktree.
+#[derive(Debug, Clone)]
+pub struct WorktreeInfo {
+    /// Path to the worktree directory.
+    pub worktree_path: String,
+    /// Branch name created for the worktree.
+    pub worktree_branch: String,
+    /// HEAD commit at creation time.
+    pub head_commit: String,
+    /// Git root of the original repo.
+    pub git_root: String,
+    /// Slug used for the worktree name.
+    pub slug: String,
+}
+
+/// Create a git worktree for agent isolation.
+/// Runs: `git worktree add .claude/worktrees/<slug> -b agent-<slug>`
+async fn create_agent_worktree(slug: &str) -> anyhow::Result<WorktreeInfo> {
+    // Find git root
+    let git_root = find_git_root().await?;
+
+    let worktree_path = format!("{git_root}/.claude/worktrees/{slug}");
+    let branch_name = format!("agent-{slug}");
+
+    // Get current HEAD commit
+    let head_commit = run_git_command(&git_root, &["rev-parse", "HEAD"]).await?;
+
+    // Create the worktree
+    run_git_command(
+        &git_root,
+        &["worktree", "add", &worktree_path, "-b", &branch_name],
+    )
+    .await?;
+
+    info!(
+        worktree_path = %worktree_path,
+        branch = %branch_name,
+        head_commit = %head_commit,
+        "Created agent worktree"
+    );
+
+    Ok(WorktreeInfo {
+        worktree_path,
+        worktree_branch: branch_name,
+        head_commit,
+        git_root,
+        slug: slug.to_string(),
+    })
+}
+
+/// Find the git root directory.
+async fn find_git_root() -> anyhow::Result<String> {
+    let output = tokio::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to run git: {e}"))?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("Not a git repository"));
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout);
+    Ok(path.trim().to_string())
+}
+
+/// Run a git command in the specified directory.
+async fn run_git_command(git_root: &str, args: &[&str]) -> anyhow::Result<String> {
+    let output = tokio::process::Command::new("git")
+        .current_dir(git_root)
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to run git {:?}: {e}", args))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!(
+            "git {:?} failed: {}",
+            args,
+            stderr.trim()
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Check if a worktree has changes compared to its head commit.
+async fn has_worktree_changes(worktree_path: &str, head_commit: &str) -> bool {
+    let result = run_git_command(
+        worktree_path,
+        &["diff", "--quiet", "HEAD"],
+    )
+    .await;
+
+    // diff --quiet returns non-zero if there are changes
+    result.is_err()
+}
+
+/// Check if worktree has untracked files.
+async fn has_untracked_files(worktree_path: &str) -> bool {
+    let output = tokio::process::Command::new("git")
+        .current_dir(worktree_path)
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .output()
+        .await;
+
+    match output {
+        Ok(out) => !out.stdout.is_empty(),
+        Err(_) => false,
+    }
+}
+
+/// Auto-cleanup worktree if no changes were made.
+async fn cleanup_worktree_if_no_changes(worktree: &WorktreeInfo) {
+    let has_changes = has_worktree_changes(&worktree.worktree_path, &worktree.head_commit).await
+        || has_untracked_files(&worktree.worktree_path).await;
+
+    if has_changes {
+        info!(
+            worktree_path = %worktree.worktree_path,
+            branch = %worktree.worktree_branch,
+            "Worktree has changes, keeping it for review"
+        );
+        // Write a notice file
+        let notice_path = format!("{}/.agent-worktree-notice.txt", worktree.worktree_path);
+        let notice = format!(
+            "This worktree was created by an agent session.\n\
+            Branch: {}\n\
+            Original HEAD: {}\n\
+            The agent made changes here. Review and merge when ready.",
+            worktree.worktree_branch,
+            worktree.head_commit
+        );
+        if let Err(e) = std::fs::write(&notice_path, notice) {
+            warn!(error = %e, "Failed to write worktree notice");
+        }
+    } else {
+        info!(
+            worktree_path = %worktree.worktree_path,
+            "No changes in worktree, cleaning up"
+        );
+        // Remove the worktree
+        let _ = run_git_command(
+            &worktree.git_root,
+            &["worktree", "remove", "-f", &worktree.worktree_path],
+        )
+        .await;
+
+        // Delete the branch
+        let _ = run_git_command(
+            &worktree.git_root,
+            &["branch", "-D", &worktree.worktree_branch],
+        )
+        .await;
+    }
+}
+
+/// Build worktree notice for fork children (path translation info).
+fn build_worktree_notice(parent_cwd: &str, child_cwd: &str) -> String {
+    format!(
+        "NOTE: This agent is running in an isolated worktree.\n\
+        Parent working directory: {parent_cwd}\n\
+        Your working directory: {child_cwd}\n\
+        When referencing file paths, use paths relative to your working directory.",
+    )
+}
+
+/// Run a future with a temporary cwd override.
+async fn run_with_cwd_override<T, F: std::future::Future<Output = T>>(cwd: &str, f: F) -> T {
+    let original_cwd = std::env::current_dir().ok();
+
+    // Change to the target directory
+    let _ = std::env::set_current_dir(cwd);
+
+    // Run the future
+    let result = f.await;
+
+    // Restore original directory
+    if let Some(ref orig) = original_cwd {
+        let _ = std::env::set_current_dir(orig);
+    }
+
+    result
 }
 
 // =========================================================================
