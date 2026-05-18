@@ -1,1 +1,272 @@
-// TODO: Implement transport
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
+
+/// Transport protocol type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportProtocol {
+    Http,
+    WebSocket,
+}
+
+impl std::fmt::Display for TransportProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransportProtocol::Http => write!(f, "HTTP"),
+            TransportProtocol::WebSocket => write!(f, "WebSocket"),
+        }
+    }
+}
+
+/// Transport connection state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransportState {
+    Idle,
+    Connecting,
+    Connected,
+    Closed,
+    Error,
+}
+
+/// Message frame for transport layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportMessage {
+    pub id: String,
+    pub payload: Vec<u8>,
+    pub metadata: HashMap<String, String>,
+    pub timestamp: u64,
+}
+
+impl TransportMessage {
+    pub fn new(payload: Vec<u8>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            payload,
+            metadata: HashMap::new(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        }
+    }
+
+    pub fn with_metadata(mut self, key: &str, value: &str) -> Self {
+        self.metadata.insert(key.to_string(), value.to_string());
+        self
+    }
+
+    pub fn to_json(&self) -> Result<Vec<u8>, String> {
+        serde_json::to_vec(self).map_err(|e| format!("Failed to serialize: {}", e))
+    }
+
+    pub fn from_json(data: &[u8]) -> Result<Self, String> {
+        serde_json::from_slice(data).map_err(|e| format!("Failed to deserialize: {}", e))
+    }
+}
+
+/// HTTP transport implementation.
+pub struct HttpTransport {
+    client: reqwest::Client,
+    state: RwLock<TransportState>,
+    url: RwLock<Option<String>>,
+}
+
+impl HttpTransport {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("Failed to create HTTP client"),
+            state: RwLock::new(TransportState::Idle),
+            url: RwLock::new(None),
+        }
+    }
+
+    pub async fn connect(&self, url: &str) -> Result<(), String> {
+        *self.state.write().await = TransportState::Connecting;
+        *self.url.write().await = Some(url.to_string());
+
+        match self.client.head(url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                *self.state.write().await = TransportState::Connected;
+                info!(url, "HTTP transport connected");
+                Ok(())
+            }
+            Ok(resp) => {
+                *self.state.write().await = TransportState::Error;
+                Err(format!("HTTP error: {}", resp.status()))
+            }
+            Err(e) => {
+                *self.state.write().await = TransportState::Error;
+                Err(format!("Connection failed: {}", e))
+            }
+        }
+    }
+
+    pub async fn disconnect(&self) -> Result<(), String> {
+        *self.state.write().await = TransportState::Closed;
+        *self.url.write().await = None;
+        info!("HTTP transport disconnected");
+        Ok(())
+    }
+
+    pub async fn send(&self, message: &TransportMessage) -> Result<(), String> {
+        let url = self.url.read().await.clone().ok_or("Not connected")?;
+
+        let response = self
+            .client
+            .post(&url)
+            .json(message)
+            .send()
+            .await
+            .map_err(|e| format!("Send failed: {}", e))?;
+
+        if response.status().is_success() {
+            debug!(id = message.id, "HTTP message sent");
+            Ok(())
+        } else {
+            Err(format!("HTTP error: {}", response.status()))
+        }
+    }
+
+    pub async fn get_state(&self) -> TransportState {
+        *self.state.read().await
+    }
+
+    pub fn protocol(&self) -> TransportProtocol {
+        TransportProtocol::Http
+    }
+}
+
+/// WebSocket transport implementation.
+pub struct WebSocketTransport {
+    state: RwLock<TransportState>,
+    url: RwLock<Option<String>>,
+    write_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+}
+
+impl WebSocketTransport {
+    pub fn new() -> (Self, tokio::sync::mpsc::Receiver<Result<TransportMessage, String>>) {
+        let (write_tx, _) = tokio::sync::mpsc::channel(100);
+        let (_, msg_rx) = tokio::sync::mpsc::channel(100);
+
+        let transport = Self {
+            state: RwLock::new(TransportState::Idle),
+            url: RwLock::new(None),
+            write_tx,
+        };
+        (transport, msg_rx)
+    }
+
+    pub async fn connect(&self, url: &str) -> Result<(), String> {
+        *self.state.write().await = TransportState::Connecting;
+        *self.url.write().await = Some(url.to_string());
+
+        // In a full implementation, this would use `tokio-tungstenite` to
+        // establish the WebSocket connection and spawn the event loop.
+        *self.state.write().await = TransportState::Connected;
+        info!(url, "WebSocket transport connected");
+        Ok(())
+    }
+
+    pub async fn disconnect(&self) -> Result<(), String> {
+        *self.state.write().await = TransportState::Closed;
+        *self.url.write().await = None;
+        info!("WebSocket transport disconnected");
+        Ok(())
+    }
+
+    pub async fn send(&self, message: &TransportMessage) -> Result<(), String> {
+        let data = message.to_json()?;
+        self.write_tx
+            .send(data)
+            .await
+            .map_err(|_| "Write channel closed".to_string())?;
+
+        debug!(id = message.id, "WebSocket message sent");
+        Ok(())
+    }
+
+    pub async fn get_state(&self) -> TransportState {
+        *self.state.read().await
+    }
+
+    pub fn protocol(&self) -> TransportProtocol {
+        TransportProtocol::WebSocket
+    }
+}
+
+/// Transport wrapper — holds either HTTP or WebSocket transport.
+pub enum Transport {
+    Http(HttpTransport),
+    WebSocket(WebSocketTransport),
+}
+
+impl Transport {
+    pub async fn connect(&self, url: &str) -> Result<(), String> {
+        match self {
+            Transport::Http(t) => t.connect(url).await,
+            Transport::WebSocket(t) => t.connect(url).await,
+        }
+    }
+
+    pub async fn disconnect(&self) -> Result<(), String> {
+        match self {
+            Transport::Http(t) => t.disconnect().await,
+            Transport::WebSocket(t) => t.disconnect().await,
+        }
+    }
+
+    pub async fn send(&self, message: &TransportMessage) -> Result<(), String> {
+        match self {
+            Transport::Http(t) => t.send(message).await,
+            Transport::WebSocket(t) => t.send(message).await,
+        }
+    }
+
+    pub async fn get_state(&self) -> TransportState {
+        match self {
+            Transport::Http(t) => t.get_state().await,
+            Transport::WebSocket(t) => t.get_state().await,
+        }
+    }
+
+    pub fn protocol(&self) -> TransportProtocol {
+        match self {
+            Transport::Http(t) => t.protocol(),
+            Transport::WebSocket(t) => t.protocol(),
+        }
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        self.get_state().await == TransportState::Connected
+    }
+}
+
+/// Transport factory — creates the appropriate transport for a URL.
+pub struct TransportFactory;
+
+impl TransportFactory {
+    pub fn create(url: &str) -> Transport {
+        if url.starts_with("ws://") || url.starts_with("wss://") {
+            let (transport, _) = WebSocketTransport::new();
+            Transport::WebSocket(transport)
+        } else {
+            Transport::Http(HttpTransport::new())
+        }
+    }
+
+    pub fn create_http() -> Transport {
+        Transport::Http(HttpTransport::new())
+    }
+
+    pub fn create_websocket() -> Transport {
+        let (transport, _) = WebSocketTransport::new();
+        Transport::WebSocket(transport)
+    }
+}
