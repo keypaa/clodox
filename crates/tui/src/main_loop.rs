@@ -146,16 +146,21 @@ impl TuiApp {
 
             self.poll_query_events();
 
+            let state_snapshot = {
+                let s = self.state.read().expect("state lock poisoned");
+                s.clone()
+            };
+
+            if state_snapshot.query_state == cc_core::state::QueryState::Streaming
+                || state_snapshot.query_state == cc_core::state::QueryState::ToolRunning {
+            }
+
             let input_buffer = self.input_buffer.clone();
             let cursor_position = self.cursor_position;
             let autocomplete = self.autocomplete.clone();
 
             self.terminal.draw(|frame| {
                 let area = frame.area();
-                let state_snapshot = {
-                    let s = self.state.read().expect("state lock poisoned");
-                    s.clone()
-                };
 
                 if let ScreenMode::Repl(screen) = &self.screen {
                     screen.render(frame, area, &input_buffer, cursor_position, &autocomplete);

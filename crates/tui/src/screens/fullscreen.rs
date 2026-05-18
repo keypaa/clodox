@@ -130,7 +130,7 @@ impl FullscreenScreen {
                 frame.render_widget(widget, area);
             }
             FullscreenMode::Chat => {
-                self.render_chat(frame, area, input_text, cursor_pos, autocomplete);
+                self.render_chat(frame, area, input_text, cursor_pos, autocomplete, state);
                 if let Some(ref dialog_state) = state.pending_permission_dialog {
                     self.render_permission_dialog(frame, area, dialog_state);
                 }
@@ -145,6 +145,7 @@ impl FullscreenScreen {
         input_text: &str,
         cursor_pos: usize,
         autocomplete: &AutocompleteState,
+        state: &AppState,
     ) {
         let columns = area.width;
         let rows = area.height;
@@ -228,8 +229,36 @@ impl FullscreenScreen {
         layout_idx += 1;
 
         if self.is_querying {
-            let spinner = SpinnerWithVerb::new(self.reduced_motion)
-                .with_override_message("Requesting".to_string());
+            let (verb, subject) = match state.query_state {
+                cc_core::state::QueryState::Sending => ("Requesting", None),
+                cc_core::state::QueryState::Streaming => {
+                    if state.streaming_thinking.is_some() {
+                        ("Thinking", None)
+                    } else {
+                        ("Processing", None)
+                    }
+                }
+                cc_core::state::QueryState::ToolPending => ("Waiting", Some("permission")),
+                cc_core::state::QueryState::ToolRunning => {
+                    if let Some(tc) = state.pending_tool_calls.first() {
+                        ("Running", Some(tc.display_text.as_str()))
+                    } else {
+                        ("Running", None)
+                    }
+                }
+                cc_core::state::QueryState::Compacting => ("Compacting", Some("context")),
+                cc_core::state::QueryState::Cancelling => ("Cancelling", None),
+                cc_core::state::QueryState::Error => ("Error", None),
+                cc_core::state::QueryState::Idle => ("Working", None),
+            };
+
+            let mut spinner = SpinnerWithVerb::new(self.reduced_motion)
+                .with_override_message(verb.to_string());
+
+            if let Some(subj) = subject {
+                spinner = spinner.with_subject(subj.to_string());
+            }
+
             frame.render_widget(spinner, spinner_area);
         } else {
             let idle = IdleStatus::new(self.reduced_motion);
