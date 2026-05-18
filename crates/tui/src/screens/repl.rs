@@ -162,11 +162,17 @@ impl ReplScreen {
         let welcome_lines = vec![
             Line::from(vec![Span::styled("Welcome back my Thane!", welcome_line_style)]),
             Line::from(""),
-            Line::from(vec![Span::styled("   ▄   ▄   ", alien_style)]),
-            Line::from(vec![Span::styled("  ███████  ", alien_style)]),
-            Line::from(vec![Span::styled(" █████████ ", alien_style)]),
-            Line::from(vec![Span::styled(" ██ ███ ██ ", alien_style)]),
-            Line::from(vec![Span::styled("  █   █    ", alien_style)]),
+            //Line::from(vec![Span::styled("   ▄   ▄   ", alien_style)]),
+            //Line::from(vec![Span::styled("  ███████  ", alien_style)]),
+            //Line::from(vec![Span::styled(" █████████ ", alien_style)]),
+            //Line::from(vec![Span::styled(" ██ ███ ██ ", alien_style)]),
+            //Line::from(vec![Span::styled("  █   █    ", alien_style)]),
+            Line::from(vec![Span::styled("             ", alien_style)]),
+            Line::from(vec![Span::styled(" ███████████ ", alien_style)]),
+            Line::from(vec![Span::styled(" ██ █████ ██ ", alien_style)]),
+            Line::from(vec![Span::styled("█████████████", alien_style)]),
+            Line::from(vec![Span::styled(" ███████████ ", alien_style)]),
+            Line::from(vec![Span::styled("  █ █   █ █  ", alien_style)]),
         ];
 
         let welcome_text = ratatui::text::Text::from(welcome_lines);
