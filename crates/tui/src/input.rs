@@ -208,6 +208,8 @@ pub enum InputAction {
     Yank,
     /// Cycle through kill ring.
     YankPop,
+    /// Abort in-flight query.
+    AbortQuery,
     /// Submit the input.
     Submit,
     /// Cancel/clear input.
@@ -352,6 +354,7 @@ pub struct InputHandler {
     pub kill_ring: KillRing,
     pub chord_state: ChordState,
     pub exit_confirmation: Option<Instant>,
+    pub is_query_active: bool,
 }
 
 impl InputHandler {
@@ -360,6 +363,7 @@ impl InputHandler {
             kill_ring: KillRing::new(),
             chord_state: ChordState::default(),
             exit_confirmation: None,
+            is_query_active: false,
         }
     }
 
@@ -385,7 +389,7 @@ impl InputHandler {
 
         // Handle Ctrl+C with double-press to exit
         if key.is_ctrl_c() {
-            return self.handle_ctrl_c();
+            return self.handle_ctrl_c(self.is_query_active);
         }
 
         // Handle Ctrl+D with double-press to exit (if input empty)
@@ -514,8 +518,11 @@ impl InputHandler {
         Some(InputAction::Unknown)
     }
 
-    /// Handle Ctrl+C (double-press to exit).
-    fn handle_ctrl_c(&mut self) -> Option<InputAction> {
+    /// Handle Ctrl+C (double-press to exit, or abort query if active).
+    fn handle_ctrl_c(&mut self, is_query_active: bool) -> Option<InputAction> {
+        if is_query_active {
+            return Some(InputAction::AbortQuery);
+        }
         if let Some(first_press) = self.exit_confirmation {
             if first_press.elapsed().as_millis() < 2000 {
                 // Double-press within 2 seconds → exit

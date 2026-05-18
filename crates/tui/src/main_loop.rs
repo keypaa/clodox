@@ -151,6 +151,12 @@ impl TuiApp {
                 s.clone()
             };
 
+            self.input_handler.is_query_active = state_snapshot.query_state == QueryState::Sending
+                || state_snapshot.query_state == QueryState::Streaming
+                || state_snapshot.query_state == QueryState::ToolPending
+                || state_snapshot.query_state == QueryState::ToolRunning
+                || state_snapshot.query_state == QueryState::Compacting;
+
             if state_snapshot.query_state == cc_core::state::QueryState::Streaming
                 || state_snapshot.query_state == cc_core::state::QueryState::ToolRunning {
             }
@@ -358,6 +364,13 @@ impl TuiApp {
             }
             InputAction::Exit => {
                 self.is_running = false;
+            }
+            InputAction::AbortQuery => {
+                if let Some(tx) = &self.abort_tx {
+                    let _ = tx.send(true);
+                    let mut state = write_state(&self.state);
+                    state.query_state = QueryState::Cancelling;
+                }
             }
             InputAction::Redraw => {
                 let _ = self.terminal.force_redraw();
