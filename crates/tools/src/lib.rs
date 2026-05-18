@@ -8,3 +8,4 @@ pub mod web_search;
 pub mod web_fetch;
 pub mod agent;
 pub mod registry;
+pub mod utils;
