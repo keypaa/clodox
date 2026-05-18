@@ -63,6 +63,9 @@ indexmap = { version = "2", features = ["serde"] }
 # Fuzzy matching
 strsim = "0.11"
 
+# MCP protocol (official Rust SDK)
+rmcp = { version = "1.7", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+
 # Internal
 cc-core = { path = "crates/core" }
 cc-query = { path = "crates/query" }
