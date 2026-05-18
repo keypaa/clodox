@@ -279,6 +279,22 @@ impl<'a> ResumePickerWidget<'a> {
 
 impl Themeable for ResumePickerWidget<'_> {
     fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+        // Clear the entire screen first to remove any leftover content from previous modes
+        let bg_style = Style::default().bg(ratatui::style::Color::Black);
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let bx = area.x + x;
+                let by = area.y + y;
+                if bx >= buf.area.width || by >= buf.area.height {
+                    continue;
+                }
+                if let Some(cell) = buf.cell_mut((bx, by)) {
+                    cell.set_symbol(" ");
+                    cell.set_style(bg_style);
+                }
+            }
+        }
+
         let lines = self.picker.render_lines(area.width);
         let dialog_height = lines.len() as u16 + 4;
         let dialog_width = 70.min(area.width);
@@ -295,6 +311,7 @@ impl Themeable for ResumePickerWidget<'_> {
 
         let border_style = Style::default().fg(ratatui::style::Color::Cyan);
 
+        // Now render the border
         for dx in 0..dialog_width {
             for dy in 0..dialog_height {
                 let bx = dialog_area.x + dx;
@@ -330,7 +347,7 @@ impl Themeable for ResumePickerWidget<'_> {
                         let mut char_idx = 0u16;
                         for span in &line.spans {
                             for ch in span.content.chars() {
-                                if char_idx + 2 < dialog_width {
+                                if char_idx + 3 < dialog_width {
                                     let cell_x = dialog_area.x + char_idx + 2;
                                     if cell_x < buf.area.width {
                                         if let Some(c) = buf.cell_mut((cell_x, by)) {

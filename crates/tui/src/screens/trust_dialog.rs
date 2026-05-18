@@ -106,6 +106,22 @@ impl<'a> TrustDialogWidget<'a> {
 
 impl Themeable for TrustDialogWidget<'_> {
     fn render_themed(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, theme: &Theme) {
+        // Clear the entire screen first to remove any leftover content from previous modes
+        let bg_style = Style::default().bg(ratatui::style::Color::Black);
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let bx = area.x + x;
+                let by = area.y + y;
+                if bx >= buf.area.width || by >= buf.area.height {
+                    continue;
+                }
+                if let Some(cell) = buf.cell_mut((bx, by)) {
+                    cell.set_symbol(" ");
+                    cell.set_style(bg_style);
+                }
+            }
+        }
+
         let lines = self.dialog.render_lines();
         let dialog_height = lines.len() as u16 + 4;
         let dialog_width = 60.min(area.width);
@@ -151,13 +167,13 @@ impl Themeable for TrustDialogWidget<'_> {
                     cell.set_symbol("─");
                     cell.set_style(border_style);
                 } else {
-                    let content_idx = dy - 2;
+                    let content_idx = dy.saturating_sub(2);
                     if content_idx < lines.len() as u16 {
                         let line = &lines[content_idx as usize];
                         let mut char_idx = 0u16;
                         for span in &line.spans {
                             for ch in span.content.chars() {
-                                if char_idx + 2 < dialog_width {
+                                if char_idx + 3 < dialog_width {
                                     let cell_x = dialog_area.x + char_idx + 2;
                                     if cell_x < buf.area.width {
                                         if let Some(c) = buf.cell_mut((cell_x, by)) {
