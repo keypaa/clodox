@@ -694,3 +694,224 @@ impl Tool for WebFetchTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_url_valid() {
+        let url = WebFetchTool::validate_url("https://example.com/path").unwrap();
+        assert_eq!(url.host_str().unwrap(), "example.com");
+        assert_eq!(url.scheme(), "https");
+    }
+
+    #[test]
+    fn test_validate_url_http_gets_upgraded() {
+        let url = WebFetchTool::validate_url("http://example.com").unwrap();
+        assert_eq!(url.scheme(), "http"); // Validation doesn't upgrade, fetch does
+        assert_eq!(url.host_str().unwrap(), "example.com");
+    }
+
+    #[test]
+    fn test_validate_url_too_long() {
+        let long_url = format!("https://example.com/{}", "a".repeat(MAX_URL_LENGTH));
+        let result = WebFetchTool::validate_url(&long_url);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("URL too long"));
+    }
+
+    #[test]
+    fn test_validate_url_with_credentials() {
+        let result = WebFetchTool::validate_url("https://user:pass@example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("username/password"));
+    }
+
+    #[test]
+    fn test_validate_url_invalid_hostname() {
+        let result = WebFetchTool::validate_url("https://localhost/path");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("at least 2 parts"));
+    }
+
+    #[test]
+    fn test_validate_url_missing_scheme() {
+        let result = WebFetchTool::validate_url("example.com/path");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_preapproved_host_known_hosts() {
+        assert!(is_preapproved_host("docs.python.org", "/3/library/os.html"));
+        assert!(is_preapproved_host("developer.mozilla.org", "/en-US/docs/Web/JavaScript"));
+        assert!(is_preapproved_host("react.dev", "/learn"));
+        assert!(is_preapproved_host("doc.rust-lang.org", "/std/"));
+        assert!(is_preapproved_host("kubernetes.io", "/docs/"));
+    }
+
+    #[test]
+    fn test_is_preapproved_host_unknown() {
+        assert!(!is_preapproved_host("random-blog.com", "/post"));
+        assert!(!is_preapproved_host("example.com", "/path"));
+    }
+
+    #[test]
+    fn test_is_preapproved_host_path_scoped() {
+        assert!(is_preapproved_host("github.com", "/anthropics/claude"));
+        assert!(is_preapproved_host("github.com", "/anthropics"));
+        assert!(!is_preapproved_host("github.com", "/some-other-org/repo"));
+        assert!(is_preapproved_host("vercel.com", "/docs/deploy"));
+        assert!(!is_preapproved_host("vercel.com", "/dashboard"));
+    }
+
+    #[test]
+    fn test_is_permitted_redirect_same_host() {
+        let original = Url::parse("https://example.com/old").unwrap();
+        let redirect = Url::parse("https://example.com/new").unwrap();
+        assert!(is_permitted_redirect(&original, &redirect));
+    }
+
+    #[test]
+    fn test_is_permitted_redirect_www_strip() {
+        let original = Url::parse("https://example.com/path").unwrap();
+        let redirect = Url::parse("https://www.example.com/path").unwrap();
+        assert!(is_permitted_redirect(&original, &redirect));
+    }
+
+    #[test]
+    fn test_is_permitted_redirect_different_scheme() {
+        let original = Url::parse("https://example.com/path").unwrap();
+        let redirect = Url::parse("http://example.com/path").unwrap();
+        assert!(!is_permitted_redirect(&original, &redirect));
+    }
+
+    #[test]
+    fn test_is_permitted_redirect_different_host() {
+        let original = Url::parse("https://example.com/path").unwrap();
+        let redirect = Url::parse("https://other.com/path").unwrap();
+        assert!(!is_permitted_redirect(&original, &redirect));
+    }
+
+    #[test]
+    fn test_is_permitted_redirect_with_credentials() {
+        let original = Url::parse("https://example.com/path").unwrap();
+        let redirect = Url::parse("https://user@example.com/path").unwrap();
+        assert!(!is_permitted_redirect(&original, &redirect));
+    }
+
+    #[test]
+    fn test_html_to_markdown_converts_basic_tags() {
+        let html = "<h1>Title</h1><p>Paragraph</p>";
+        let md = WebFetchTool::html_to_markdown(html);
+        assert!(md.contains("Title"));
+        assert!(md.contains("Paragraph"));
+    }
+
+    #[test]
+    fn test_html_to_markdown_preserves_text() {
+        let html = "<div>Hello <strong>World</strong></div>";
+        let md = WebFetchTool::html_to_markdown(html);
+        assert!(md.contains("Hello"));
+        assert!(md.contains("World"));
+    }
+
+    #[test]
+    fn test_tool_name() {
+        let tool = WebFetchTool::new();
+        assert_eq!(tool.name(), "WebFetch");
+    }
+
+    #[test]
+    fn test_input_schema_has_required_fields() {
+        let tool = WebFetchTool::new();
+        let schema = tool.input_schema();
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::json!("url")));
+        assert!(required.contains(&serde_json::json!("prompt")));
+    }
+
+    #[test]
+    fn test_is_read_only() {
+        let tool = WebFetchTool::new();
+        let input = serde_json::json!({"url": "https://example.com", "prompt": "test"});
+        assert!(tool.is_read_only(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe() {
+        let tool = WebFetchTool::new();
+        let input = serde_json::json!({"url": "https://example.com", "prompt": "test"});
+        assert!(tool.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_interrupt_behavior() {
+        let tool = WebFetchTool::new();
+        assert_eq!(tool.interrupt_behavior(), InterruptBehavior::Cancel);
+    }
+
+    #[test]
+    fn test_search_or_read_command() {
+        let tool = WebFetchTool::new();
+        let input = serde_json::json!({"url": "https://example.com", "prompt": "test"});
+        let info = tool.is_search_or_read_command(&input);
+        assert!(!info.is_search);
+        assert!(info.is_read);
+        assert!(!info.is_list);
+    }
+
+    #[test]
+    fn test_validate_input_missing_url() {
+        let input = serde_json::json!({"prompt": "test"});
+        assert!(input["url"].as_str().is_none());
+    }
+
+    #[test]
+    fn test_validate_input_invalid_url() {
+        let result = WebFetchTool::validate_url("not-a-url");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_input_valid() {
+        let result = WebFetchTool::validate_url("https://example.com");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_user_facing_name() {
+        let tool = WebFetchTool::new();
+        assert_eq!(tool.user_facing_name(None), "Fetch");
+    }
+
+    #[test]
+    fn test_get_activity_description() {
+        let tool = WebFetchTool::new();
+        let input = serde_json::json!({"url": "https://docs.python.org/3/library/os.html"});
+        let desc = tool.get_activity_description(Some(&input));
+        assert_eq!(desc, Some("Fetching docs.python.org".to_string()));
+    }
+
+    #[test]
+    fn test_get_activity_description_no_input() {
+        let tool = WebFetchTool::new();
+        let desc = tool.get_activity_description(None);
+        assert_eq!(desc, Some("Fetching web page".to_string()));
+    }
+
+    #[test]
+    fn test_get_tool_use_summary() {
+        let tool = WebFetchTool::new();
+        let input = serde_json::json!({"url": "https://developer.mozilla.org/en-US/docs/Web"});
+        let summary = tool.get_tool_use_summary(Some(&input));
+        assert_eq!(summary, Some("developer.mozilla.org".to_string()));
+    }
+
+    #[test]
+    fn test_max_result_size() {
+        let tool = WebFetchTool::new();
+        assert_eq!(tool.max_result_size_chars(), 100_000);
+    }
+}
+

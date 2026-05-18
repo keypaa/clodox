@@ -88,3 +88,65 @@ impl Default for ToolRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_registry_is_empty() {
+        let registry = ToolRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_register_and_get_tool() {
+        let mut registry = ToolRegistry::new();
+        registry.register(BashTool::new());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains("Bash"));
+        assert!(registry.get("Bash").is_some());
+    }
+
+    #[test]
+    fn test_get_nonexistent_tool() {
+        let registry = ToolRegistry::new();
+        assert!(registry.get("NonExistent").is_none());
+        assert!(!registry.contains("NonExistent"));
+    }
+
+    #[test]
+    fn test_all_tools() {
+        let mut registry = ToolRegistry::new();
+        registry.register(BashTool::new());
+        registry.register(FileReadTool::new());
+        let tools = registry.all();
+        assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    fn test_default_registry_has_all_tools() {
+        let registry = ToolRegistry::default_registry();
+        assert!(registry.contains("Bash"));
+        assert!(registry.contains("Read"));
+        assert!(registry.contains("Write"));
+        assert!(registry.contains("Edit"));
+        assert!(registry.contains("Grep"));
+        assert!(registry.contains("Glob"));
+        assert!(registry.contains("WebFetch"));
+        assert!(registry.contains("WebSearch"));
+        assert!(registry.contains("Agent"));
+        assert_eq!(registry.len(), 9);
+    }
+
+    #[test]
+    fn test_register_overwrites() {
+        let mut registry = ToolRegistry::new();
+        registry.register(BashTool::new());
+        assert_eq!(registry.len(), 1);
+        registry.register(BashTool::new());
+        assert_eq!(registry.len(), 1);
+    }
+}
+

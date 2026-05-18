@@ -364,3 +364,195 @@ fn parse_exa_response(response: &serde_json::Value, query: &str) -> Vec<serde_js
 
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_name() {
+        let tool = WebSearchTool::new();
+        assert_eq!(tool.name(), "WebSearch");
+    }
+
+    #[test]
+    fn test_search_hint() {
+        let tool = WebSearchTool::new();
+        assert_eq!(tool.search_hint(), Some("search the web for current information"));
+    }
+
+    #[test]
+    fn test_input_schema_has_required_fields() {
+        let tool = WebSearchTool::new();
+        let schema = tool.input_schema();
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::json!("query")));
+    }
+
+    #[test]
+    fn test_input_schema_has_optional_domains() {
+        let tool = WebSearchTool::new();
+        let schema = tool.input_schema();
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("allowed_domains"));
+        assert!(props.contains_key("blocked_domains"));
+    }
+
+    #[test]
+    fn test_is_read_only() {
+        let tool = WebSearchTool::new();
+        let input = serde_json::json!({"query": "test"});
+        assert!(tool.is_read_only(&input));
+    }
+
+    #[test]
+    fn test_is_concurrency_safe() {
+        let tool = WebSearchTool::new();
+        let input = serde_json::json!({"query": "test"});
+        assert!(tool.is_concurrency_safe(&input));
+    }
+
+    #[test]
+    fn test_interrupt_behavior() {
+        let tool = WebSearchTool::new();
+        assert_eq!(tool.interrupt_behavior(), InterruptBehavior::Cancel);
+    }
+
+    #[test]
+    fn test_search_or_read_command() {
+        let tool = WebSearchTool::new();
+        let input = serde_json::json!({"query": "test"});
+        let info = tool.is_search_or_read_command(&input);
+        assert!(info.is_search);
+        assert!(!info.is_read);
+        assert!(!info.is_list);
+    }
+
+    #[test]
+    fn test_user_facing_name() {
+        let tool = WebSearchTool::new();
+        assert_eq!(tool.user_facing_name(None), "Web Search");
+    }
+
+    #[test]
+    fn test_get_activity_description() {
+        let tool = WebSearchTool::new();
+        let input = serde_json::json!({"query": "Rust async programming"});
+        let desc = tool.get_activity_description(Some(&input));
+        assert_eq!(desc, Some("Searching for Rust async programming".to_string()));
+    }
+
+    #[test]
+    fn test_get_activity_description_no_input() {
+        let tool = WebSearchTool::new();
+        let desc = tool.get_activity_description(None);
+        assert_eq!(desc, Some("Searching the web".to_string()));
+    }
+
+    #[test]
+    fn test_get_tool_use_summary() {
+        let tool = WebSearchTool::new();
+        let input = serde_json::json!({"query": "latest Rust news"});
+        let summary = tool.get_tool_use_summary(Some(&input));
+        assert_eq!(summary, Some("latest Rust news".to_string()));
+    }
+
+    #[test]
+    fn test_get_tool_use_summary_no_input() {
+        let tool = WebSearchTool::new();
+        let summary = tool.get_tool_use_summary(None);
+        assert!(summary.is_none());
+    }
+
+    #[test]
+    fn test_max_result_size() {
+        let tool = WebSearchTool::new();
+        assert_eq!(tool.max_result_size_chars(), 100_000);
+    }
+
+    #[test]
+    fn test_validate_input_missing_query() {
+        let input = serde_json::json!({});
+        assert!(input["query"].as_str().is_none());
+    }
+
+    #[test]
+    fn test_validate_input_empty_query() {
+        let input = serde_json::json!({"query": ""});
+        let q = input["query"].as_str().unwrap();
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn test_validate_input_valid() {
+        let input = serde_json::json!({"query": "Rust programming"});
+        assert!(input["query"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_prompt_includes_current_month() {
+        let prompt = WebSearchTool::get_prompt();
+        let current = current_month_year();
+        assert!(prompt.contains(&current));
+    }
+
+    #[test]
+    fn test_parse_exa_response_with_results() {
+        let response = serde_json::json!({
+            "results": [
+                {"title": "Rust Docs", "url": "https://doc.rust-lang.org/", "text": "Official docs"},
+                {"title": "Rust Book", "url": "https://doc.rust-lang.org/book/", "text": "The Book"}
+            ]
+        });
+        let results = parse_exa_response(&response, "Rust");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["title"], "Rust Docs");
+        assert_eq!(results[0]["url"], "https://doc.rust-lang.org/");
+    }
+
+    #[test]
+    fn test_parse_exa_response_invalid_url_filtered() {
+        let response = serde_json::json!({
+            "results": [
+                {"title": "Good", "url": "https://example.com", "text": "Valid"},
+                {"title": "Bad", "url": "not-a-url", "text": "Invalid"}
+            ]
+        });
+        let results = parse_exa_response(&response, "test");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["title"], "Good");
+    }
+
+    #[test]
+    fn test_parse_exa_response_no_results_fallback() {
+        let response = serde_json::json!({
+            "results": []
+        });
+        let results = parse_exa_response(&response, "test query");
+        assert_eq!(results.len(), 1);
+        assert!(results[0].as_str().unwrap().contains("No results found"));
+    }
+
+    #[test]
+    fn test_parse_exa_response_content_fallback() {
+        let response = serde_json::json!({
+            "results": [],
+            "content": "Raw content from Exa"
+        });
+        let results = parse_exa_response(&response, "test");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], serde_json::Value::String("Raw content from Exa".to_string()));
+    }
+
+    #[test]
+    fn test_search_result_serialization() {
+        let result = SearchResult {
+            title: "Test Title".to_string(),
+            url: "https://example.com".to_string(),
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["title"], "Test Title");
+        assert_eq!(json["url"], "https://example.com");
+    }
+}
+

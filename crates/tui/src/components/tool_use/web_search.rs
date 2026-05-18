@@ -39,3 +39,60 @@ pub fn activity_description(query: &str) -> String {
     };
     format!("Searching {}", truncated)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_facing_name() {
+        assert_eq!(user_facing_name(), "WebSearch");
+    }
+
+    #[test]
+    fn test_display_details_short_query() {
+        assert_eq!(display_details("Rust"), "Rust");
+    }
+
+    #[test]
+    fn test_display_details_long_query() {
+        let query = "a".repeat(200);
+        let details = display_details(&query);
+        assert_eq!(details.chars().count(), 100);
+        assert!(details.ends_with("…"));
+    }
+
+    #[test]
+    fn test_status_text_running() {
+        assert_eq!(status_text(true, false), Some("Searching…"));
+    }
+
+    #[test]
+    fn test_status_text_waiting() {
+        assert_eq!(status_text(false, true), Some("Waiting for permission…"));
+    }
+
+    #[test]
+    fn test_status_text_waiting_takes_priority() {
+        assert_eq!(status_text(true, true), Some("Waiting for permission…"));
+    }
+
+    #[test]
+    fn test_status_text_idle() {
+        assert_eq!(status_text(false, false), None);
+    }
+
+    #[test]
+    fn test_activity_description_short_query() {
+        assert_eq!(activity_description("Rust"), "Searching Rust");
+    }
+
+    #[test]
+    fn test_activity_description_long_query() {
+        let query = format!("Rust {}", "a".repeat(100));
+        let desc = activity_description(&query);
+        assert!(desc.starts_with("Searching Rust "));
+        assert!(desc.contains("…"));
+    }
+}
+

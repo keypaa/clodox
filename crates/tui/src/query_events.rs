@@ -577,3 +577,92 @@ fn format_tool_permission_message(name: &str, input: &serde_json::Value) -> Stri
         _ => format!("Use tool: {}", name),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_tool_call_display_bash() {
+        let input = serde_json::json!({"command": "ls -la"});
+        assert_eq!(format_tool_call_display("bash", &input), "bash: ls -la");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_read() {
+        let input = serde_json::json!({"file_path": "src/main.rs"});
+        assert_eq!(format_tool_call_display("read", &input), "read: src/main.rs");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_write() {
+        let input = serde_json::json!({"file_path": "output.txt"});
+        assert_eq!(format_tool_call_display("write", &input), "write: output.txt");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_edit() {
+        let input = serde_json::json!({"file_path": "config.json"});
+        assert_eq!(format_tool_call_display("edit", &input), "edit: config.json");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_grep() {
+        let input = serde_json::json!({"pattern": "fn main"});
+        assert_eq!(format_tool_call_display("grep", &input), "grep: fn main");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_glob() {
+        let input = serde_json::json!({"pattern": "**/*.rs"});
+        assert_eq!(format_tool_call_display("glob", &input), "glob: **/*.rs");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_web_fetch() {
+        let input = serde_json::json!({"url": "https://example.com"});
+        assert_eq!(format_tool_call_display("web_fetch", &input), "web_fetch: https://example.com");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_web_search() {
+        let input = serde_json::json!({"query": "Rust programming"});
+        assert_eq!(format_tool_call_display("web_search", &input), "web_search: Rust programming");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_agent_with_type() {
+        let input = serde_json::json!({
+            "description": "Review code",
+            "subagent_type": "code-reviewer"
+        });
+        assert_eq!(format_tool_call_display("agent", &input), "agent (code-reviewer): Review code");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_agent_without_type() {
+        let input = serde_json::json!({"description": "Do work"});
+        assert_eq!(format_tool_call_display("agent", &input), "agent: Do work");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_task_alias() {
+        let input = serde_json::json!({"description": "Task work"});
+        assert_eq!(format_tool_call_display("Task", &input), "agent: Task work");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_unknown_tool() {
+        let input = serde_json::json!({});
+        assert_eq!(format_tool_call_display("UnknownTool", &input), "UnknownTool");
+    }
+
+    #[test]
+    fn test_format_tool_call_display_missing_field() {
+        let input = serde_json::json!({});
+        assert_eq!(format_tool_call_display("bash", &input), "bash");
+        assert_eq!(format_tool_call_display("read", &input), "read");
+        assert_eq!(format_tool_call_display("web_fetch", &input), "web_fetch");
+    }
+}
+

@@ -39,3 +39,62 @@ pub fn activity_description(url: &str) -> String {
     };
     format!("Fetching {}", truncated)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_facing_name() {
+        assert_eq!(user_facing_name(), "WebFetch");
+    }
+
+    #[test]
+    fn test_display_details_short_url() {
+        let url = "https://example.com";
+        assert_eq!(display_details(url), url.to_string());
+    }
+
+    #[test]
+    fn test_display_details_long_url() {
+        let url = format!("https://example.com/{}", "a".repeat(200));
+        let details = display_details(&url);
+        assert_eq!(details.chars().count(), 120);
+        assert!(details.ends_with("…"));
+    }
+
+    #[test]
+    fn test_status_text_running() {
+        assert_eq!(status_text(true, false), Some("Fetching…"));
+    }
+
+    #[test]
+    fn test_status_text_waiting() {
+        assert_eq!(status_text(false, true), Some("Waiting for permission…"));
+    }
+
+    #[test]
+    fn test_status_text_waiting_takes_priority() {
+        assert_eq!(status_text(true, true), Some("Waiting for permission…"));
+    }
+
+    #[test]
+    fn test_status_text_idle() {
+        assert_eq!(status_text(false, false), None);
+    }
+
+    #[test]
+    fn test_activity_description_short_url() {
+        let url = "https://example.com";
+        assert_eq!(activity_description(url), "Fetching https://example.com");
+    }
+
+    #[test]
+    fn test_activity_description_long_url() {
+        let url = format!("https://example.com/{}", "a".repeat(100));
+        let desc = activity_description(&url);
+        assert!(desc.starts_with("Fetching https://example.com/"));
+        assert!(desc.contains("…"));
+    }
+}
+

@@ -3608,3 +3608,179 @@ assistant: "I'm going to use the {tool_name} tool to launch the greeting-respond
         agent_list = agent_list_section,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_full_agent_definition_system_prompt_from_instructions() {
+        let def = FullAgentDefinition {
+            agent_type: "test-agent".to_string(),
+            name: "Test Agent".to_string(),
+            when_to_use: "For testing purposes".to_string(),
+            model: None,
+            tools: None,
+            disallowed_tools: None,
+            permission_mode: None,
+            required_mcp_servers: None,
+            isolation: None,
+            background: false,
+            color: None,
+            instructions: Some("Custom instructions here".to_string()),
+            source: AgentSource::BuiltIn,
+        };
+        assert_eq!(def.get_system_prompt(), "Custom instructions here");
+    }
+
+    #[test]
+    fn test_full_agent_definition_system_prompt_default() {
+        let def = FullAgentDefinition {
+            agent_type: "test-agent".to_string(),
+            name: "Test Agent".to_string(),
+            when_to_use: "For testing".to_string(),
+            model: None,
+            tools: None,
+            disallowed_tools: None,
+            permission_mode: None,
+            required_mcp_servers: None,
+            isolation: None,
+            background: false,
+            color: None,
+            instructions: None,
+            source: AgentSource::BuiltIn,
+        };
+        let expected = "You are the Test Agent agent. For testing";
+        assert_eq!(def.get_system_prompt(), expected);
+    }
+
+    #[test]
+    fn test_full_agent_definition_is_custom() {
+        let builtin = FullAgentDefinition {
+            agent_type: "test".to_string(),
+            name: "Test".to_string(),
+            when_to_use: "Test".to_string(),
+            model: None,
+            tools: None,
+            disallowed_tools: None,
+            permission_mode: None,
+            required_mcp_servers: None,
+            isolation: None,
+            background: false,
+            color: None,
+            instructions: None,
+            source: AgentSource::BuiltIn,
+        };
+        assert!(!builtin.is_custom());
+
+        let custom = FullAgentDefinition {
+            agent_type: "custom".to_string(),
+            name: "Custom".to_string(),
+            when_to_use: "Custom".to_string(),
+            model: None,
+            tools: None,
+            disallowed_tools: None,
+            permission_mode: None,
+            required_mcp_servers: None,
+            isolation: None,
+            background: false,
+            color: None,
+            instructions: None,
+            source: AgentSource::Custom("/path/to/agents".to_string()),
+        };
+        assert!(custom.is_custom());
+    }
+
+    #[test]
+    fn test_general_purpose_agent_has_required_fields() {
+        let def = general_purpose_agent();
+        assert_eq!(def.agent_type, "general-purpose");
+        assert!(!def.name.is_empty());
+        assert!(!def.when_to_use.is_empty());
+        assert!(!def.get_system_prompt().is_empty());
+    }
+
+    #[test]
+    fn test_built_in_agents_have_unique_types() {
+        let agents = get_builtin_agents();
+        let mut types: Vec<&str> = agents.iter().map(|a| a.agent_type.as_str()).collect();
+        types.sort();
+        let unique_count = types.iter().collect::<std::collections::HashSet<_>>().len();
+        assert_eq!(types.len(), unique_count, "Duplicate agent types found");
+    }
+
+    #[test]
+    fn test_built_in_agents_have_colors() {
+        let agents = get_builtin_agents();
+        for agent in agents {
+            assert!(agent.color.is_some(), "Agent {} has no color", agent.agent_type);
+        }
+    }
+
+    #[test]
+    fn test_agent_tool_name_constant() {
+        assert_eq!(AGENT_TOOL_NAME, "Agent");
+    }
+
+    #[test]
+    fn test_legacy_agent_tool_name_constant() {
+        assert_eq!(LEGACY_AGENT_TOOL_NAME, "Task");
+    }
+
+    #[test]
+    fn test_agent_source_serialization() {
+        let builtin = AgentSource::BuiltIn;
+        let json = serde_json::to_value(&builtin).unwrap();
+        assert_eq!(json, serde_json::json!("BuiltIn"));
+
+        let custom = AgentSource::Custom("/path".to_string());
+        let json = serde_json::to_value(&custom).unwrap();
+        assert_eq!(json, serde_json::json!({"Custom": "/path"}));
+    }
+
+    #[test]
+    fn test_agent_source_deserialization() {
+        let json = serde_json::json!("BuiltIn");
+        let source: AgentSource = serde_json::from_value(json).unwrap();
+        assert!(matches!(source, AgentSource::BuiltIn));
+
+        let json = serde_json::json!({"Custom": "/path"});
+        let source: AgentSource = serde_json::from_value(json).unwrap();
+        assert!(matches!(source, AgentSource::Custom(_)));
+    }
+
+    #[test]
+    fn test_full_agent_definition_serialization() {
+        let def = FullAgentDefinition {
+            agent_type: "test".to_string(),
+            name: "Test".to_string(),
+            when_to_use: "Testing".to_string(),
+            model: Some("sonnet".to_string()),
+            tools: Some(vec!["Bash".to_string()]),
+            disallowed_tools: Some(vec!["Write".to_string()]),
+            permission_mode: Some("auto".to_string()),
+            required_mcp_servers: Some(vec!["exa".to_string()]),
+            isolation: Some("worktree".to_string()),
+            background: true,
+            color: Some("blue".to_string()),
+            instructions: Some("Instructions".to_string()),
+            source: AgentSource::BuiltIn,
+        };
+        let json = serde_json::to_value(&def).unwrap();
+        assert_eq!(json["agent_type"], "test");
+        assert_eq!(json["model"], "sonnet");
+        assert_eq!(json["background"], true);
+        assert_eq!(json["tools"][0], "Bash");
+    }
+
+    #[test]
+    fn test_progress_threshold_constant() {
+        assert_eq!(PROGRESS_THRESHOLD_MS, 2000);
+    }
+
+    #[test]
+    fn test_max_result_size_constant() {
+        assert_eq!(MAX_RESULT_SIZE_CHARS, 100_000);
+    }
+}
+
