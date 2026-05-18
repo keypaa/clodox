@@ -2739,6 +2739,400 @@ assistant: Uses the Agent tool with subagent_type "fork"
 }
 
 // =========================================================================
+// Agent Swarms — tmux/iTerm2 Spawning (Phase 10.3f)
+// =========================================================================
+
+/// Constants for agent swarms.
+pub const SWARM_SESSION_NAME: &str = "claude-swarm";
+pub const TEAM_LEAD_NAME: &str = "lead";
+pub const TMUX_COMMAND: &str = "tmux";
+
+/// Backend type for teammate spawning.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpawnBackend {
+    Tmux,
+    Iterm2,
+    InProcess,
+}
+
+/// Team member in a swarm.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamMember {
+    pub agent_id: String,
+    pub name: String,
+    pub agent_type: String,
+    pub model: String,
+    pub prompt: String,
+    pub color: String,
+    pub plan_mode_required: bool,
+    pub joined_at: chrono::DateTime<chrono::Utc>,
+    pub tmux_pane_id: Option<String>,
+    pub cwd: String,
+    pub backend_type: SpawnBackend,
+}
+
+/// Team file structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamFile {
+    pub name: String,
+    pub members: Vec<TeamMember>,
+    pub lead_agent_id: String,
+}
+
+/// Mailbox message for inter-agent communication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailboxMessage {
+    pub from: String,
+    pub text: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Detect available spawn backend.
+pub async fn detect_spawn_backend() -> SpawnBackend {
+    // Check tmux availability
+    if check_command_available(TMUX_COMMAND).await {
+        return SpawnBackend::Tmux;
+    }
+
+    // Check iTerm2 + it2 availability
+    if check_command_available("it2").await {
+        return SpawnBackend::Iterm2;
+    }
+
+    // Fallback to in-process
+    SpawnBackend::InProcess
+}
+
+/// Check if a command is available in PATH.
+async fn check_command_available(cmd: &str) -> bool {
+    tokio::process::Command::new(cmd)
+        .arg("--version")
+        .output()
+        .await
+        .is_ok()
+}
+
+/// Create a tmux session for the swarm.
+async fn create_tmux_session(session_name: &str) -> anyhow::Result<()> {
+    // Check if session already exists
+    let exists = tokio::process::Command::new(TMUX_COMMAND)
+        .args(["has-session", "-t", session_name])
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if exists {
+        return Ok(());
+    }
+
+    // Create detached session
+    let output = tokio::process::Command::new(TMUX_COMMAND)
+        .args(["new-session", "-d", "-s", session_name])
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create tmux session: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("tmux new-session failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+/// Create a new tmux window in a session.
+async fn create_tmux_window(session_name: &str, window_name: &str) -> anyhow::Result<String> {
+    let output = tokio::process::Command::new(TMUX_COMMAND)
+        .args([
+            "new-window",
+            "-t",
+            session_name,
+            "-n",
+            window_name,
+            "-P",
+            "-F",
+            "#{pane_id}",
+        ])
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create tmux window: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("tmux new-window failed: {}", stderr.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Split a tmux pane.
+async fn split_tmux_pane(target: &str, vertical: bool) -> anyhow::Result<String> {
+    let args = if vertical {
+        vec!["split-window", "-t", target, "-P", "-F", "#{pane_id}"]
+    } else {
+        vec!["split-window", "-h", "-t", target, "-P", "-F", "#{pane_id}"]
+    };
+
+    let output = tokio::process::Command::new(TMUX_COMMAND)
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to split tmux pane: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("tmux split-window failed: {}", stderr.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Send keys to a tmux pane.
+async fn send_tmux_keys(target: &str, keys: &str) -> anyhow::Result<()> {
+    let output = tokio::process::Command::new(TMUX_COMMAND)
+        .args(["send-keys", "-t", target, keys, "Enter"])
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send tmux keys: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("tmux send-keys failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+/// Kill a tmux pane.
+async fn kill_tmux_pane(target: &str) -> anyhow::Result<()> {
+    let output = tokio::process::Command::new(TMUX_COMMAND)
+        .args(["kill-pane", "-t", target])
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to kill tmux pane: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("tmux kill-pane failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+/// Spawn a teammate in a tmux session.
+pub async fn spawn_teammate_tmux(
+    team_name: &str,
+    member: &TeamMember,
+    claude_command: &str,
+) -> anyhow::Result<String> {
+    // Create or verify swarm session
+    create_tmux_session(SWARM_SESSION_NAME).await?;
+
+    // Create window for the team member
+    let window_name = format!("{team_name}-{}", member.name);
+    let pane_id = create_tmux_window(SWARM_SESSION_NAME, &window_name).await?;
+
+    // Build the command with agent identity CLI args
+    let agent_cmd = build_agent_command(claude_command, member, team_name);
+
+    // Send the command to the pane
+    send_tmux_keys(&pane_id, &agent_cmd).await?;
+
+    info!(
+        team_name = %team_name,
+        member_name = %member.name,
+        pane_id = %pane_id,
+        "Spawned teammate in tmux"
+    );
+
+    Ok(pane_id)
+}
+
+/// Build the command line for an agent with identity args.
+fn build_agent_command(base_command: &str, member: &TeamMember, team_name: &str) -> String {
+    let mut cmd = base_command.to_string();
+
+    cmd.push_str(&format!(" --agent-id {}", member.agent_id));
+    cmd.push_str(&format!(" --agent-name {}", member.name));
+    cmd.push_str(&format!(" --team-name {team_name}"));
+    cmd.push_str(&format!(" --agent-color {}", member.color));
+    cmd.push_str(&format!(" --agent-type {}", member.agent_type));
+
+    if member.plan_mode_required {
+        cmd.push_str(" --plan-mode-required");
+    }
+
+    cmd
+}
+
+/// Sanitize agent name for team file (no @ in agent IDs).
+pub fn sanitize_team_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect()
+}
+
+/// Generate unique team member name (handle collisions).
+pub async fn generate_unique_team_member_name(
+    base_name: &str,
+    team_file: &Option<TeamFile>,
+) -> String {
+    let lower_base = base_name.to_lowercase();
+
+    let existing_names: Vec<String> = team_file
+        .as_ref()
+        .map(|tf| tf.members.iter().map(|m| m.name.to_lowercase()).collect())
+        .unwrap_or_default();
+
+    if !existing_names.iter().any(|n| n == &lower_base) {
+        return base_name.to_string();
+    }
+
+    let mut suffix = 2;
+    loop {
+        let candidate = format!("{base_name}-{suffix}");
+        if !existing_names.iter().any(|n| n == &candidate.to_lowercase()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+/// Read team file from disk.
+pub fn read_team_file(team_name: &str) -> anyhow::Result<Option<TeamFile>> {
+    let path = format!(".claude/teams/{team_name}.json");
+    if !std::path::Path::new(&path).exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("Failed to read team file: {e}"))?;
+
+    let team: TeamFile = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse team file: {e}"))?;
+
+    Ok(Some(team))
+}
+
+/// Write team file to disk.
+pub fn write_team_file(team: &TeamFile) -> anyhow::Result<()> {
+    let dir = ".claude/teams";
+    std::fs::create_dir_all(dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create teams directory: {e}"))?;
+
+    let path = format!("{dir}/{}.json", team.name);
+    let content = serde_json::to_string_pretty(team)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize team file: {e}"))?;
+
+    std::fs::write(&path, content)
+        .map_err(|e| anyhow::anyhow!("Failed to write team file: {e}"))?;
+
+    Ok(())
+}
+
+/// Write a mailbox message for inter-agent communication.
+pub fn write_mailbox_message(
+    team_name: &str,
+    agent_name: &str,
+    message: &MailboxMessage,
+) -> anyhow::Result<()> {
+    let dir = format!(".claude/mailbox/{team_name}");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create mailbox directory: {e}"))?;
+
+    let path = format!("{dir}/{agent_name}.json");
+    let content = serde_json::to_string_pretty(message)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize mailbox message: {e}"))?;
+
+    std::fs::write(&path, content)
+        .map_err(|e| anyhow::anyhow!("Failed to write mailbox message: {e}"))?;
+
+    Ok(())
+}
+
+/// Read mailbox message for an agent.
+pub fn read_mailbox_message(
+    team_name: &str,
+    agent_name: &str,
+) -> anyhow::Result<Option<MailboxMessage>> {
+    let path = format!(".claude/mailbox/{team_name}/{agent_name}.json");
+    if !std::path::Path::new(&path).exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("Failed to read mailbox: {e}"))?;
+
+    let message: MailboxMessage = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse mailbox message: {e}"))?;
+
+    Ok(Some(message))
+}
+
+/// Build CLI args for permission mode propagation.
+fn build_permission_mode_args(permission_mode: &str) -> Vec<String> {
+    match permission_mode {
+        "acceptEdits" => vec!["--permission-mode".to_string(), "acceptEdits".to_string()],
+        "auto" => vec!["--permission-mode".to_string(), "auto".to_string()],
+        "dangerously-skip-permissions" => vec!["--dangerously-skip-permissions".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+/// Resolve model for teammate spawning.
+/// 'inherit' → parent's model, undefined → default, explicit → use specified.
+fn resolve_teammate_model(
+    agent_model: Option<&str>,
+    parent_model: &str,
+) -> String {
+    match agent_model {
+        Some("inherit") | None => parent_model.to_string(),
+        Some(model) => model.to_string(),
+    }
+}
+
+/// Register an out-of-process teammate as a background task.
+pub fn register_out_of_process_teammate(
+    agent_id: &str,
+    name: &str,
+    prompt: &str,
+    pane_id: &str,
+    backend: &SpawnBackend,
+) -> serde_json::Value {
+    serde_json::json!({
+        "taskId": format!("teammate-{agent_id}"),
+        "agentId": agent_id,
+        "name": name,
+        "prompt": prompt,
+        "paneId": pane_id,
+        "backend": match backend {
+            SpawnBackend::Tmux => "tmux",
+            SpawnBackend::Iterm2 => "iterm2",
+            SpawnBackend::InProcess => "in-process",
+        },
+        "status": "running",
+    })
+}
+
+/// Kill a teammate pane.
+pub async fn kill_teammate_pane(pane_id: &str, backend: &SpawnBackend) -> anyhow::Result<()> {
+    match backend {
+        SpawnBackend::Tmux => kill_tmux_pane(pane_id).await,
+        SpawnBackend::Iterm2 => {
+            // it2 session close would go here
+            warn!("iTerm2 backend not fully implemented");
+            Ok(())
+        }
+        SpawnBackend::InProcess => {
+            // In-process agents are killed via abort channel
+            warn!("In-process teammate kill not implemented");
+            Ok(())
+        }
+    }
+}
+
+// =========================================================================
 // Helper Functions
 // =========================================================================
 
