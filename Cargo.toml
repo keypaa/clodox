@@ -63,6 +63,15 @@ indexmap = { version = "2", features = ["serde"] }
 # Fuzzy matching
 strsim = "0.11"
 
+# HTML to markdown conversion
+html2text = "0.16"
+
+# URL parsing
+url = "2"
+
+# LRU cache
+lru = "0.12"
+
 # MCP protocol (official Rust SDK)
 rmcp = { version = "1.7", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 
