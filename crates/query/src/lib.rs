@@ -5,4 +5,5 @@ pub mod retry;
 pub mod engine;
 pub mod streaming;
 pub mod compaction;
+pub mod system_prompt;
 pub mod state;
