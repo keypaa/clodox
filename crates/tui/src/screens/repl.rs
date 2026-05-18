@@ -1,0 +1,226 @@
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Wrap};
+
+use crate::theme::Theme;
+use crate::state::AppState;
+use crate::components::messages::row::{RenderMessage, render_messages};
+use crate::components::spinner::with_verb::{SpinnerWithVerb, IdleStatus};
+use crate::components::prompt_input::text_input::TextInputWidget;
+use crate::components::prompt_input::footer::{PromptFooter, PromptMode};
+use crate::components::prompt_input::autocomplete::{AutocompleteWidget, AutocompleteState};
+use crate::screens::logo_header::{LogoHeader, LogoHeaderWidget};
+
+const MAX_MESSAGES_REPL: usize = 200;
+
+pub struct ReplScreen {
+    theme: Theme,
+    messages: Vec<RenderMessage>,
+    is_querying: bool,
+    reduced_motion: bool,
+}
+
+impl ReplScreen {
+    pub fn new(theme: Theme) -> Self {
+        Self {
+            theme,
+            messages: Vec::new(),
+            is_querying: false,
+            reduced_motion: false,
+        }
+    }
+
+    pub fn update(&mut self, state: &AppState) {
+        let capped = if state.messages.len() > MAX_MESSAGES_REPL {
+            state.messages[state.messages.len() - MAX_MESSAGES_REPL..].to_vec()
+        } else {
+            state.messages.clone()
+        };
+
+        self.messages = capped
+            .into_iter()
+            .map(|msg| message_to_render_message(&msg))
+            .collect();
+
+        self.is_querying = state.is_querying;
+    }
+
+    pub fn set_reduced_motion(&mut self, enabled: bool) {
+        self.reduced_motion = enabled;
+    }
+
+    pub fn render(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        input_text: &str,
+        cursor_pos: usize,
+        autocomplete: &AutocompleteState,
+    ) {
+        let columns = area.width;
+        let is_narrow = columns < 80;
+
+        let main_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(12),
+                Constraint::Min(3),
+                Constraint::Length(1),
+                Constraint::Length(4),
+            ])
+            .split(area);
+
+        let logo_header = LogoHeader::new();
+        let logo = LogoHeaderWidget::new(
+            &logo_header,
+            &self.theme,
+            columns,
+        );
+        frame.render_widget(logo, main_layout[0]);
+
+        if !self.messages.is_empty() {
+            render_messages(
+                frame,
+                main_layout[1],
+                &self.messages,
+                &self.theme,
+                None,
+            );
+        }
+
+        if self.is_querying {
+            let spinner = SpinnerWithVerb::new(self.reduced_motion)
+                .with_override_message("Requesting".to_string());
+            frame.render_widget(spinner, main_layout[2]);
+        } else {
+            let idle = IdleStatus::new(self.reduced_motion);
+            frame.render_widget(idle, main_layout[2]);
+        }
+
+        self.render_prompt_input(
+            frame,
+            main_layout[3],
+            input_text,
+            cursor_pos,
+            autocomplete,
+            is_narrow,
+        );
+    }
+
+    fn render_prompt_input(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        input_text: &str,
+        cursor_pos: usize,
+        autocomplete: &AutocompleteState,
+        is_narrow: bool,
+    ) {
+        let input_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .split(area);
+
+        let border_line = "─".repeat(area.width as usize);
+        let border = Paragraph::new(border_line).style(
+            Style::default().fg(self.theme.colors.prompt_border),
+        );
+        frame.render_widget(border, input_layout[0]);
+
+        let cursor_char = " ";
+        let cursor_style = Style::default()
+            .bg(self.theme.colors.text)
+            .fg(self.theme.colors.user_message_background);
+
+        let cp = cursor_pos.min(input_text.len());
+        let before = &input_text[..cp];
+        let after = &input_text[cp..];
+
+        let input_line = Line::from(vec![
+            Span::styled("› ", Style::default().fg(self.theme.colors.suggestion)),
+            Span::raw(before),
+            Span::styled(cursor_char, cursor_style),
+            Span::raw(after),
+        ]);
+
+        let input_paragraph = Paragraph::new(input_line);
+        frame.render_widget(input_paragraph, input_layout[1]);
+
+        if autocomplete.is_active() {
+            let ac_widget = AutocompleteWidget::new(autocomplete, &self.theme);
+            frame.render_widget(ac_widget, input_layout[2]);
+        } else {
+            let footer = PromptFooter::new()
+                .with_mode(PromptMode::Default)
+                .with_dimensions(false, is_narrow);
+            frame.render_widget(footer, input_layout[2]);
+        }
+    }
+}
+
+fn message_to_render_message(msg: &cc_core::messages::Message) -> RenderMessage {
+    use cc_core::messages::Message;
+
+    match msg {
+        Message::User(user_msg) => {
+            let text = user_msg.content.iter()
+                .filter_map(|block| match block {
+                    cc_core::messages::ContentBlockParam::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            RenderMessage::UserText { text }
+        }
+        Message::Assistant(assistant_msg) => {
+            let text = assistant_msg.content.iter()
+                .filter_map(|block| match block {
+                    cc_core::messages::ContentBlockParam::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if !text.is_empty() {
+                RenderMessage::AssistantText { text }
+            } else {
+                let tool_use = assistant_msg.content.iter()
+                    .find_map(|block| match block {
+                        cc_core::messages::ContentBlockParam::ToolUse { name, input, .. } => {
+                            Some((name.clone(), input.clone()))
+                        }
+                        _ => None,
+                    });
+
+                match tool_use {
+                    Some((name, _input)) => {
+                        RenderMessage::AssistantToolUse {
+                            tool_name: name,
+                            details: None,
+                            status: Some("Running…".to_string()),
+                            is_resolved: false,
+                            is_error: false,
+                        }
+                    }
+                    None => RenderMessage::AssistantText { text: String::new() },
+                }
+            }
+        }
+        Message::System(system_msg) => {
+            let text = match system_msg {
+                cc_core::messages::SystemMessage::Informational(msg) => msg.text.clone(),
+                cc_core::messages::SystemMessage::ApiError(msg) => msg.error.clone(),
+                _ => String::new(),
+            };
+
+            RenderMessage::SystemError { error: text }
+        }
+        _ => RenderMessage::AssistantText { text: String::new() },
+    }
+}

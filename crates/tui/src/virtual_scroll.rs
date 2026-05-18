@@ -235,6 +235,10 @@ impl VirtualMessageList {
         self.transcript_mode
     }
 
+    pub fn messages_for_render(&self) -> &[RenderMessage] {
+        &self.messages
+    }
+
     pub fn set_transcript_mode(&mut self, enabled: bool) {
         if self.transcript_mode != enabled {
             self.transcript_mode = enabled;
