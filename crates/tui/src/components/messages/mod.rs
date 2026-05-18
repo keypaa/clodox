@@ -8,3 +8,5 @@ pub mod assistant_tool_use;
 pub mod assistant_thinking;
 pub mod system_error;
 pub mod rate_limit;
+
+pub use row::{render_message_row, render_messages};

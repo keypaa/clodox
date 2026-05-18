@@ -181,3 +181,31 @@ pub fn success_style(theme: &Theme) -> ratatui::style::Style {
 pub fn suggestion_style(theme: &Theme) -> ratatui::style::Style {
     ratatui::style::Style::default().fg(theme.colors.suggestion)
 }
+
+/// Trait for theme-aware widgets.
+pub trait Themeable {
+    fn render_themed(
+        &self,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+        theme: &Theme,
+    );
+}
+
+impl Themeable for ratatui::text::Line<'_> {
+    fn render_themed(
+        &self,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+        _theme: &Theme,
+    ) {
+        ratatui::widgets::Widget::render(self.clone(), area, buf);
+    }
+}
+
+impl Theme {
+    /// Get a color by key name.
+    pub fn color(&self, key: &str) -> Color {
+        color(self, key)
+    }
+}
