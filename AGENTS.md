@@ -126,6 +126,88 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 
 ---
 
+## Completed Phases
+
+### Phase 1: Core Types & Query Engine ✅
+- API types, streaming client, retry logic
+- QueryEngine state machine, compaction system
+- System prompt assembly
+
+### Phase 2: Core Tools ✅
+- Bash, Read, Write, Edit, Grep, Glob tools
+- Tool registry, utilities
+
+### Phase 3: CLI & Settings ✅
+- CLI argument parsing (50+ flags, 5 subcommands)
+- Logging/tracing, settings system (8 parts)
+- Session lifecycle
+
+### Phase 4: TUI Engine ✅ (18/18 sub-phases)
+- Terminal backend, theme system, component model
+- Message/tool rendering, spinner system, markdown rendering
+- PromptInput, status line, permission dialogs, setup screens
+- Input handling, virtual scrolling, animations
+- State management, main loop, screen layouts
+
+### Phase 5: Command System ✅
+- `Command` trait, `CommandRegistry`, fuzzy matching
+- **62 commands implemented** (0 TODO stubs remaining):
+  - Tier 1 (9): `/help`, `/clear`, `/compact`, `/config`, `/login`, `/logout`, `/resume`, `/diff`, `/cost`
+  - Tier 2 (9): `/commit`, `/review`, `/memory`, `/mcp`, `/theme`, `/vim`, `/context`, `/model`, `/skills`, `/tasks`
+  - Tier 3 (16): `/doctor`, `/share`, `/pr_comments`, `/permissions`, `/output_style`, `/feedback`, `/hooks`, `/effort`, `/fast`, `/brief`, `/agents`, `/branch`, `/copy`, `/exit`, `/version`
+  - Utility (28): `/btw`, `/stats`, `/status`, `/files`, `/export`, `/rename`, `/color`, `/release_notes`, `/keybindings`, `/passes`, `/plan`, `/sandbox_toggle`, `/terminal_setup`, `/upgrade`, `/usage`, `/voice`, `/chrome`, `/ide`, `/init`, `/remote_setup`, `/remote_env`, `/privacy_settings`, `/rate_limit_options`, `/reload_plugins`, `/stickers`, `/tag`, `/thinkback`, `/thinkback_play`
+
+### Phase 8: Auxiliary Systems (Deferred)
+- 8.1 Vim Mode — modal editing, keybindings
+- 8.2 Skills System — skill loading/discovery
+- 8.3 Coordinator — multi-agent orchestration
+- 8.4 Voice — audio capture, STT
+- 8.5 Migrations — config/data migration
+
+### Phase 9: TUI Integration & Polish ✅ (9/9 sub-phases)
+- State enrichment (`QueryState`, `TurnTokenCounts`, `PendingToolCall`, `PermissionDialogState`)
+- Query engine integration (tokio runtime, mpsc channel, `spawn_query()`, `poll_query_events()`)
+- Stream event → state (`StreamingAccumulator`, `handle_query_event()`, cost estimation)
+- Permission system (risk assessment, dialog rendering, permission mode routing)
+- Dynamic tool rendering (collapsible blocks, streaming variants)
+- Spinner enhancement (phase-aware verbs)
+- Cancel/abort (Ctrl+C routing, watch channel)
+- Screen navigation (Escape navigates between screens)
+- Token/cost display (footer pills, adaptive formatting)
+
+---
+
+## Remaining Work
+
+### Phase 6: Service Layer (Not Started)
+- API service wrapper
+- MCP service (server lifecycle)
+- Compact service
+- Analytics service
+- Plugin service
+- LSP service
+- Token estimation service
+
+### Phase 7: Bridge System (Not Started)
+- REPL bridge
+- Transport layer
+- Messaging protocol
+- Daemon process
+
+### Phase 8: Auxiliary Systems (Deferred)
+- Vim Mode (basic toggle exists, full modal editing deferred)
+- Skills System (plugin listing exists, dynamic discovery deferred)
+- Coordinator (multi-agent orchestration deferred)
+- Voice (audio capture + STT deferred)
+- Migrations (config version migration deferred)
+
+### Missing Tools (Not Implemented)
+- `web_fetch`
+- `web_search`
+- `agent` (subagent tool)
+
+---
+
 ## Build Commands
 
 ```bash
@@ -171,4 +253,4 @@ cc-cli
 └── cc-bridge (→ cc-core, cc-services)
 ```
 
-Note: `cc-tui` crate not yet created — will depend on `cc-core` and `cc-query`.
+Note: `cc-tui` crate is created and fully functional — depends on `cc-core` and `cc-commands`.

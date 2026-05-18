@@ -347,8 +347,10 @@ name = "cc-services"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "cc-core",
+ "cc-query",
  "futures",
  "reqwest",
  "serde",
