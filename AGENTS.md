@@ -206,11 +206,14 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 - 6.9: Prompt Suggestion — template-based suggestions, keyword matching, confidence scoring
 - 6.10: Tests — 103 unit tests across all services
 
-### Phase 7: Bridge System (Not Started)
-- REPL bridge
-- Transport layer
-- Messaging protocol
-- Daemon process
+### Phase 7: Bridge System ✅ (7/7 sub-phases)
+- 7.1: Bridge Daemon — PID file management, session spawning/killing, idle cleanup, state machine
+- 7.2: REPL Bridge — connection lifecycle, reconnect with backoff, heartbeat, event broadcasting
+- 7.3: Messaging Protocol — 14 message types, length-prefix framing codec, dispatcher, queue
+- 7.4: Transport Layer — HTTP (reqwest) + WebSocket (mpsc channels), factory pattern, state tracking
+- 7.5: JWT Authentication — HS256 signing, validation (signature/expiry/issuer/audience), scope checking
+- 7.6: Permission Callbacks — rule-based auto-allow/deny, mode-based decisions, oneshot response channels
+- 7.7: Session Runner — background session execution, concurrency limits, pause/resume, status tracking
 
 ### Phase 8: Auxiliary Systems (Deferred)
 - Vim Mode (basic toggle exists, full modal editing deferred)
