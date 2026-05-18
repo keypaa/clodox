@@ -3315,6 +3315,207 @@ pub fn get_sdk_agent_progress_summaries_enabled() -> bool {
 }
 
 // =========================================================================
+// Coordinator Mode + Proactive + Remote (Phase 10.3h)
+// =========================================================================
+
+/// Check if coordinator mode is enabled.
+/// Controlled by CLAUDE_CODE_COORDINATOR_MODE env var.
+pub fn is_coordinator_mode() -> bool {
+    std::env::var("CLAUDE_CODE_COORDINATOR_MODE")
+        .ok()
+        .map(|v| v == "1" || v == "true" || v == "coordinator")
+        .unwrap_or(false)
+}
+
+/// Check if proactive mode is active.
+pub fn is_proactive_active() -> bool {
+    std::env::var("CLAUDE_CODE_PROACTIVE_MODE")
+        .ok()
+        .map(|v| v == "1" || v == "true" || v == "active")
+        .unwrap_or(false)
+}
+
+/// Determine if all agents should be forced to async mode.
+/// Coordinator mode and proactive mode both force async.
+pub fn should_force_async_agents() -> bool {
+    is_coordinator_mode() || is_proactive_active()
+}
+
+/// Remote agent launch result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteAgentResult {
+    pub status: String,
+    pub task_id: String,
+    pub session_url: Option<String>,
+    pub output_file: String,
+}
+
+/// Check if remote agent features are available (ant-only).
+/// External builds should have this disabled via feature flags.
+pub fn is_remote_agent_available() -> bool {
+    // In a full impl, this would check cfg!(feature = "ant")
+    // For now, check env var
+    std::env::var("CLAUDE_CODE_REMOTE_AGENTS")
+        .ok()
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// Teleport agent to remote CCR session (ant-only).
+/// Stub for external builds — returns error if remote not available.
+pub async fn teleport_to_remote(
+    agent_id: &str,
+    agent_type: &str,
+    prompt: &str,
+    model: &str,
+) -> anyhow::Result<RemoteAgentResult> {
+    if !is_remote_agent_available() {
+        return Err(anyhow::anyhow!(
+            "Remote agent isolation is not available in this build. \
+            This feature requires Anthropic internal access."
+        ));
+    }
+
+    // In a full impl, this would:
+    // 1. Create a remote CCR session
+    // 2. Send agent config to remote
+    // 3. Return session URL and task ID
+
+    let task_id = format!("remote-{agent_id}");
+    let session_url = format!("https://remote.claude.com/sessions/{task_id}");
+
+    info!(
+        agent_id = %agent_id,
+        task_id = %task_id,
+        session_url = %session_url,
+        "Agent teleported to remote"
+    );
+
+    Ok(RemoteAgentResult {
+        status: "remote_launched".to_string(),
+        task_id,
+        session_url: Some(session_url),
+        output_file: format!(".claude/agents/{agent_id}/transcript.json"),
+    })
+}
+
+/// Check if agent is eligible for remote execution.
+/// Only certain agent types and models are eligible.
+pub fn check_remote_agent_eligibility(
+    agent_type: &str,
+    model: &str,
+) -> anyhow::Result<()> {
+    if !is_remote_agent_available() {
+        return Err(anyhow::anyhow!("Remote agents not available"));
+    }
+
+    // Only certain agent types are eligible for remote
+    let eligible_types = ["general-purpose", "code-reviewer", "test-runner"];
+    if !eligible_types.contains(&agent_type) {
+        return Err(anyhow::anyhow!(
+            "Agent type '{agent_type}' is not eligible for remote execution"
+        ));
+    }
+
+    // Only certain models are supported for remote
+    let eligible_models = ["sonnet", "opus"];
+    if !eligible_models.contains(&model) {
+        return Err(anyhow::anyhow!(
+            "Model '{model}' is not supported for remote execution"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Register a remote agent task with the task tracker.
+pub fn register_remote_agent_task(
+    task_id: &str,
+    agent_id: &str,
+    description: &str,
+    session_url: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "taskId": task_id,
+        "agentId": agent_id,
+        "description": description,
+        "sessionUrl": session_url,
+        "status": "remote_running",
+        "type": "remote",
+    })
+}
+
+/// Get URL to view a remote task session.
+pub fn get_remote_task_session_url(task_id: &str) -> Option<String> {
+    if !is_remote_agent_available() {
+        return None;
+    }
+    Some(format!("https://remote.claude.com/tasks/{task_id}"))
+}
+
+/// Feature gate: Check if background tasks are disabled.
+pub fn is_background_tasks_disabled() -> bool {
+    std::env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")
+        .ok()
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// Feature gate: Get auto-background timeout (120,000ms if enabled).
+pub fn get_auto_background_ms() -> Option<u64> {
+    let enabled = std::env::var("CLAUDE_AUTO_BACKGROUND_TASKS")
+        .ok()
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
+
+    if enabled {
+        Some(120_000) // 2 minutes
+    } else {
+        None
+    }
+}
+
+/// Feature gate: Check if agent list should be shown as attachment vs inline.
+pub fn is_agent_list_as_attachment() -> bool {
+    std::env::var("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES")
+        .ok()
+        .map(|v| v == "1" || v == "true" || v == "attachment")
+        .unwrap_or(false)
+}
+
+/// Build coordinator-specific system prompt (slim version).
+pub fn build_coordinator_system_prompt(base_prompt: &str) -> String {
+    format!(
+        "{base_prompt}\n\n\
+        === COORDINATOR MODE ===\n\
+        You are running in coordinator mode. Your role is to orchestrate multiple \
+        agents to complete complex tasks. Delegate work to specialized agents using \
+        the Agent tool with run_in_background=true. Monitor progress and coordinate \
+        the results.\n\
+        ========================"
+    )
+}
+
+/// Determine if agent should run in async mode based on context.
+/// Considers: explicit flag, agent definition, coordinator mode, proactive mode.
+pub fn should_run_agent_async(
+    run_in_background: bool,
+    agent_background: bool,
+) -> bool {
+    // Explicit flag or agent definition background flag
+    if run_in_background || agent_background {
+        return true;
+    }
+
+    // Coordinator mode and proactive mode force all agents async
+    if should_force_async_agents() {
+        return true;
+    }
+
+    false
+}
+
+// =========================================================================
 // Helper Functions
 // =========================================================================
 
