@@ -159,16 +159,17 @@ impl ReplScreen {
         let welcome = "Welcome back my Thane!";
         let welcome_padding = left_width.saturating_sub(welcome.len()) / 2;
 
-        // Clean symmetrical Space Invader ASCII sprite
-        let alien = vec![
-            "  ▄▀▀▀▀▀▄  ",
-            " ▐ ▀▀▄ ",
-            " ▐█▀▄▀▄█▌ ",
-            "  ▀▄▀▄▀   ",
+        // Exact hardcoded alien art
+        let alien_art = vec![
+            "  █     █  ",
+            "   █   █   ",
+            "  ███████  ",
+            " ██ ███ ██ ",
+            "███████████",
+            "█ ███████ █",
+            "█ █     █ █",
+            "   ██ ██   ",
         ];
-
-        let model_line = "Sonnet 4.6 · Claude Pro · Organization";
-        let path_line = "~/GitHub/simplespace";
 
         let mut left_content = Vec::new();
 
@@ -182,7 +183,7 @@ impl ReplScreen {
         left_content.push(Line::from(vec![Span::raw("")]));
 
         // ASCII alien (centered)
-        for alien_line in &alien {
+        for alien_line in &alien_art {
             let alien_padding = left_width.saturating_sub(alien_line.len()) / 2;
             left_content.push(Line::from(vec![
                 Span::raw(" ".repeat(alien_padding)),
@@ -195,38 +196,37 @@ impl ReplScreen {
 
         // Model info (left-aligned)
         left_content.push(Line::from(vec![
-            Span::styled(model_line, dim_style),
+            Span::styled("Sonnet 4.6 · Claude Pro · Organization", dim_style),
         ]));
 
-        // Path (right-aligned)
-        let path_padding = left_width.saturating_sub(path_line.len());
+        // Path (10 literal spaces to push right)
         left_content.push(Line::from(vec![
-            Span::raw(" ".repeat(path_padding)),
-            Span::styled(path_line, dim_style),
+            Span::styled("          ~/GitHub/simplespace", dim_style),
         ]));
 
         let left_paragraph = Paragraph::new(left_content);
         frame.render_widget(left_paragraph, left_inner);
 
-        // Right chunk with left margin
-        let right_inner = Rect {
-            x: layout[1].x + 2,
-            y: layout[1].y,
-            width: layout[1].width.saturating_sub(2),
-            height: layout[1].height,
-        };
+        // Right chunk split vertically
+        let right_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(4),
+                Constraint::Min(0),
+            ])
+            .split(layout[1]);
 
         let tips_style = Style::default()
             .fg(accent_color)
             .add_modifier(Modifier::BOLD);
 
-        // Tips block with bottom border only
+        // Tips chunk with bottom border
         let tips_block = Block::default()
             .borders(Borders::BOTTOM)
             .border_style(Style::default().fg(accent_color));
 
-        let tips_inner = tips_block.inner(right_inner);
-        frame.render_widget(tips_block, right_inner);
+        let tips_inner = tips_block.inner(right_layout[0]);
+        frame.render_widget(tips_block, right_layout[0]);
 
         let tips_content = vec![
             Line::from(vec![Span::styled("Tips for getting started", tips_style)]),
@@ -239,22 +239,14 @@ impl ReplScreen {
         let tips_paragraph = Paragraph::new(tips_content);
         frame.render_widget(tips_paragraph, tips_inner);
 
-        // Recent activity (no underline)
-        let activity_y = right_inner.y + 3;
-        let activity_area = Rect {
-            x: right_inner.x,
-            y: activity_y,
-            width: right_inner.width,
-            height: right_inner.height.saturating_sub(3),
-        };
-
+        // Recent activity chunk (no borders)
         let activity_content = vec![
             Line::from(vec![Span::styled("Recent activity", tips_style)]),
             Line::from(vec![Span::styled("No recent activity", dim_style)]),
         ];
 
         let activity_paragraph = Paragraph::new(activity_content);
-        frame.render_widget(activity_paragraph, activity_area);
+        frame.render_widget(activity_paragraph, right_layout[1]);
     }
 
     fn render_prompt_input(
