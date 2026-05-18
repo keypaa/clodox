@@ -456,7 +456,7 @@ impl Themeable for LogoHeaderWidget<'_> {
                         cell.set_style(border_style);
                     }
                 } else {
-                    let content_idx = dy - 2;
+                    let content_idx = dy - 1;
                     if content_idx < lines.len() as u16 {
                         let line = &lines[content_idx as usize];
                         let mut char_idx = 0u16;
