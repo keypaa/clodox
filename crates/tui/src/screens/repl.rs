@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::theme::Theme;
 use crate::state::AppState;
@@ -10,7 +10,6 @@ use crate::components::messages::converter::core_message_to_render_message;
 use crate::components::spinner::with_verb::{SpinnerWithVerb, IdleStatus};
 use crate::components::prompt_input::footer::{PromptFooter, PromptMode};
 use crate::components::prompt_input::autocomplete::{AutocompleteWidget, AutocompleteState};
-use crate::screens::logo_header::{LogoHeader, LogoHeaderWidget};
 
 const MAX_MESSAGES_REPL: usize = 200;
 
@@ -61,24 +60,37 @@ impl ReplScreen {
         let columns = area.width;
         let is_narrow = columns < 80;
 
+        let accent_color = ratatui::style::Color::Rgb(255, 135, 0);
+
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(12),
+                Constraint::Length(10),
                 Constraint::Min(3),
                 Constraint::Length(1),
                 Constraint::Length(4),
             ])
             .split(area);
 
-        let logo_header = LogoHeader::new();
-        let logo = LogoHeaderWidget::new(
-            &logo_header,
-            &self.theme,
-            columns,
-        );
-        frame.render_widget(logo, main_layout[0]);
+        // Render the orange welcome block
+        let welcome_block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(accent_color))
+            .title(Line::from(vec![
+                Span::styled(
+                    " Claude Code v0.1.0 ",
+                    Style::default().fg(accent_color).add_modifier(Modifier::BOLD),
+                ),
+            ]));
 
+        let welcome_inner = welcome_block.inner(main_layout[0]);
+        frame.render_widget(welcome_block, main_layout[0]);
+
+        // Render welcome content inside the block
+        self.render_welcome_content(frame, welcome_inner, accent_color);
+
+        // Render messages area
         if !self.messages.is_empty() {
             render_messages(
                 frame,
@@ -89,6 +101,7 @@ impl ReplScreen {
             );
         }
 
+        // Render spinner or idle status
         if self.is_querying {
             let spinner = SpinnerWithVerb::new(self.reduced_motion)
                 .with_override_message("Requesting".to_string());
@@ -98,6 +111,7 @@ impl ReplScreen {
             frame.render_widget(idle, main_layout[2]);
         }
 
+        // Render prompt input
         self.render_prompt_input(
             frame,
             main_layout[3],
@@ -106,6 +120,66 @@ impl ReplScreen {
             autocomplete,
             is_narrow,
         );
+    }
+
+    fn render_welcome_content(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        accent_color: ratatui::style::Color,
+    ) {
+        let dim_style = Style::default()
+            .fg(ratatui::style::Color::DarkGray)
+            .add_modifier(Modifier::DIM);
+
+        let welcome_style = Style::default()
+            .fg(ratatui::style::Color::White)
+            .add_modifier(Modifier::BOLD);
+
+        let tips_style = Style::default()
+            .fg(accent_color)
+            .add_modifier(Modifier::BOLD);
+
+        let separator = "─".repeat(30);
+        let separator_style = Style::default()
+            .fg(ratatui::style::Color::DarkGray)
+            .add_modifier(Modifier::DIM);
+
+        let content = vec![
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled("Welcome back!", welcome_style),
+            ]),
+            Line::from(vec![Span::raw("")]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled("Tips for getting started", tips_style),
+            ]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled(separator.clone(), separator_style.clone()),
+            ]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled("Run /init to create a CLAUDE.md file...", dim_style),
+            ]),
+            Line::from(vec![Span::raw("")]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled("Recent activity", tips_style),
+            ]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled(separator, separator_style),
+            ]),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled("No recent activity", dim_style),
+            ]),
+        ];
+
+        let paragraph = Paragraph::new(content);
+        frame.render_widget(paragraph, area);
     }
 
     fn render_prompt_input(

@@ -160,25 +160,10 @@ impl TuiApp {
             self.terminal.draw(|frame| {
                 let area = frame.area();
 
-                let accent_color = ratatui::style::Color::Rgb(255, 135, 0);
-                let outer_block = ratatui::widgets::Block::default()
-                    .borders(ratatui::widgets::Borders::ALL)
-                    .border_type(ratatui::widgets::BorderType::Rounded)
-                    .border_style(ratatui::style::Style::default().fg(accent_color))
-                    .title(ratatui::text::Line::from(vec![
-                        ratatui::text::Span::styled(
-                            " Claude Code v2.1.87 ",
-                            ratatui::style::Style::default().fg(accent_color).add_modifier(ratatui::style::Modifier::BOLD),
-                        ),
-                    ]));
-
-                let inner_area = outer_block.inner(area);
-                frame.render_widget(outer_block, area);
-
                 if let ScreenMode::Repl(screen) = &self.screen {
-                    screen.render(frame, inner_area, &input_buffer, cursor_position, &autocomplete);
+                    screen.render(frame, area, &input_buffer, cursor_position, &autocomplete);
                 } else if let ScreenMode::Fullscreen(screen) = &mut self.screen {
-                    screen.render(frame, inner_area, &input_buffer, cursor_position, &autocomplete, &state_snapshot);
+                    screen.render(frame, area, &input_buffer, cursor_position, &autocomplete, &state_snapshot);
                 }
             })?;
         }
