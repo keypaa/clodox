@@ -34,7 +34,30 @@ impl Command for PrCommentsCommand {
         CommandType::Local
     }
 
-    async fn execute(&self, _args: &str, _ctx: &CommandContext) -> CommandResult {
-        CommandResult::text("TODO: /pr_comments command not yet implemented")
+    async fn execute(&self, args: &str, _ctx: &CommandContext) -> CommandResult {
+        let pr_url = args.trim();
+
+        if pr_url.is_empty() {
+            let branch = std::process::Command::new("git")
+                .arg("branch")
+                .arg("--show-current")
+                .output();
+
+            match branch {
+                Ok(o) if o.status.success() => {
+                    let current = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    CommandResult::text(format!(
+                        "Usage: /pr_comments <pr-url-or-number>\n\nCurrent branch: {}\nExample: /pr_comments https://github.com/org/repo/pull/123",
+                        current
+                    ))
+                }
+                _ => CommandResult::text("Usage: /pr_comments <pr-url-or-number>\nExample: /pr_comments https://github.com/org/repo/pull/123"),
+            }
+        } else {
+            CommandResult::text(format!(
+                "Fetching PR comments for: {}\n\n(PR comments require GitHub API integration — not yet implemented)",
+                pr_url
+            ))
+        }
     }
 }
