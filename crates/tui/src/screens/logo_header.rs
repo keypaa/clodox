@@ -237,6 +237,9 @@ impl LogoHeader {
                     left_spans.push(Span::styled(model_line.clone(), dim_style));
                 }
                 7 => {
+                    // Center CWD line in left panel
+                    let padding = (left_width as usize).saturating_sub(cwd_line.len()) / 2;
+                    left_spans.push(Span::raw(" ".repeat(padding)));
                     left_spans.push(Span::styled(cwd_line.clone(), dim_style));
                 }
                 _ => {}
@@ -468,8 +471,8 @@ impl Themeable for LogoHeaderWidget<'_> {
                     cell.set_symbol("─");
                     cell.set_style(border_style);
                 } else if dy == 0 {
-                    // Center the title on the top border
-                    let title_start = ((width as usize) - border_title.len()) / 2;
+                    // Version title on the left side of top border
+                    let title_start = 3;
                     let char_idx = dx as usize;
                     if char_idx >= title_start && char_idx < title_start + border_title.len() {
                         let ch = border_title.chars().nth(char_idx - title_start).unwrap();
