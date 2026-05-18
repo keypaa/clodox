@@ -194,14 +194,17 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 
 ## Remaining Work
 
-### Phase 6: Service Layer (Not Started)
-- API service wrapper
-- MCP service (server lifecycle)
-- Compact service
-- Analytics service
-- Plugin service
-- LSP service
-- Token estimation service
+### Phase 6: Service Layer ✅ (10/10 sub-phases)
+- 6.1: API Service — client wrapper, rate limiting, request caching, retry orchestration, usage tracking
+- 6.2: MCP Service — server lifecycle (stdio + HTTP/SSE), tool/resource discovery, Exa integration, `McpToolCaller` trait
+- 6.3: Analytics Service — event tracking, session metrics, feature flags (GrowthBook-compatible)
+- 6.4: Plugin Service — discovery, manifest parsing, enable/disable, directory scanning
+- 6.5: LSP Service — server management, file mapping, diagnostics/completions/symbols stubs
+- 6.6: Token Estimation — per-model pricing, cost calculation, context window tracking
+- 6.7: Team Memory Sync — shared memory, version-based conflict detection, file-based sync
+- 6.8: Extract Memories — CLAUDE.md parsing, project file extraction, conversation analysis
+- 6.9: Prompt Suggestion — template-based suggestions, keyword matching, confidence scoring
+- 6.10: Tests — 103 unit tests across all services
 
 ### Phase 7: Bridge System (Not Started)
 - REPL bridge
