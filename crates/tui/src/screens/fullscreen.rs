@@ -275,6 +275,7 @@ impl FullscreenScreen {
             autocomplete,
             is_short,
             is_narrow,
+            state,
         );
     }
 
@@ -287,6 +288,7 @@ impl FullscreenScreen {
         autocomplete: &AutocompleteState,
         is_short: bool,
         is_narrow: bool,
+        state: &AppState,
     ) {
         let constraints = if is_short {
             vec![
@@ -338,9 +340,21 @@ impl FullscreenScreen {
                 let ac_widget = AutocompleteWidget::new(autocomplete, &self.theme);
                 frame.render_widget(ac_widget, footer_area);
             } else {
+                use crate::components::prompt_input::footer::TokenDisplay;
+
+                let tokens = TokenDisplay {
+                    input: state.token_counts.input_tokens,
+                    output: state.token_counts.output_tokens,
+                    cache_read: state.token_counts.cache_read_tokens,
+                    cache_creation: state.token_counts.cache_creation_tokens,
+                };
+
                 let footer = PromptFooter::new()
                     .with_mode(PromptMode::Default)
-                    .with_dimensions(false, is_narrow);
+                    .with_dimensions(false, is_narrow)
+                    .with_tokens(tokens)
+                    .with_cost(state.total_cost_usd)
+                    .with_querying(state.is_querying);
                 frame.render_widget(footer, footer_area);
             }
         }
