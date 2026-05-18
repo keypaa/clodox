@@ -11,18 +11,6 @@ members = [
 ]
 resolver = "2"
 
-[workspace.lints.clippy]
-all = "allow"
-
-[workspace.lints.rust]
-unused_imports = "allow"
-unused_variables = "allow"
-dead_code = "allow"
-unused_mut = "allow"
-unused_assignments = "allow"
-private_interfaces = "allow"
-mismatched_lifetime_syntaxes = "allow"
-
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
