@@ -9,3 +9,4 @@ pub mod markdown;
 pub mod markdown_table;
 pub mod status_line;
 pub mod permissions;
+pub mod collapsible;

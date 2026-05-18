@@ -290,10 +290,15 @@ dependencies = [
  "anyhow",
  "async-trait",
  "cc-core",
+ "cc-query",
+ "dirs",
+ "ratatui",
  "serde",
  "serde_json",
+ "strsim",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -377,6 +382,7 @@ name = "cc-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc-commands",
  "cc-core",
  "cc-query",
  "cc-tools",
@@ -384,6 +390,7 @@ dependencies = [
  "comrak",
  "crossterm",
  "dirs",
+ "futures",
  "instant",
  "lru",
  "ratatui",

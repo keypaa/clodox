@@ -197,6 +197,7 @@ pub fn render_assistant_tool_use(
     status: Option<&str>,
     is_resolved: bool,
     is_error: bool,
+    duration_ms: Option<u64>,
     theme: &Theme,
 ) {
     let layout = Layout::default()
@@ -236,6 +237,14 @@ pub fn render_assistant_tool_use(
             text_style(theme.colors.text),
         );
         spans.push(details_span);
+    }
+
+    if let Some(ms) = duration_ms {
+        let ms_span = Span::styled(
+            format!(" {:.1}s", ms as f64 / 1000.0),
+            dim_style(theme.colors.inactive),
+        );
+        spans.push(ms_span);
     }
 
     let tool_line = Line::from(spans);
@@ -326,6 +335,104 @@ pub fn render_system_error(
             dim_style(theme.colors.inactive),
         );
         lines.push(Line::from(hint));
+    }
+
+    let paragraph = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+}
+
+/// Render a streaming tool use message (partial JSON being accumulated).
+///
+/// Visual format:
+///   ● bash { "command": "git stat…
+///     └─ building…
+pub fn render_assistant_tool_use_streaming(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    tool_name: &str,
+    partial_json: &str,
+    theme: &Theme,
+) {
+    let preview = if partial_json.len() > 80 {
+        format!("{}…", &partial_json[..77])
+    } else {
+        partial_json.to_string()
+    };
+
+    let loader_color = theme.colors.inactive;
+    let loader = Span::styled(DOT_CHAR, Style::default().fg(loader_color));
+
+    let name_span = Span::styled(
+        tool_name,
+        Style::default()
+            .fg(theme.colors.text)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let json_span = Span::styled(
+        &preview,
+        dim_style(theme.colors.inactive),
+    );
+
+    let building_span = Span::styled(
+        "└─ building…",
+        dim_style(theme.colors.suggestion),
+    );
+
+    let lines = vec![
+        Line::from(vec![loader, Span::raw(" "), name_span, Span::raw(" "), json_span]),
+        Line::from(building_span),
+    ];
+
+    let paragraph = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+}
+
+/// Render an inline tool result in the message flow.
+///
+/// Visual format:
+///   ✓ bash: git status  (0.3s)
+///     <output preview>
+pub fn render_tool_result_inline(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    tool_name: &str,
+    success: bool,
+    output_preview: &str,
+    theme: &Theme,
+) {
+    let icon = if success { "✓" } else { "✗" };
+    let icon_color = if success {
+        theme.colors.success
+    } else {
+        theme.colors.error
+    };
+
+    let icon_span = Span::styled(icon, Style::default().fg(icon_color).add_modifier(Modifier::BOLD));
+    let name_span = Span::styled(
+        tool_name,
+        Style::default()
+            .fg(theme.colors.text)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let preview = if output_preview.len() > 120 {
+        format!("{}…", &output_preview[..117])
+    } else {
+        output_preview.to_string()
+    };
+
+    let preview_span = Span::styled(
+        &preview,
+        dim_style(theme.colors.inactive),
+    );
+
+    let mut lines = vec![
+        Line::from(vec![icon_span, Span::raw(" "), name_span]),
+    ];
+
+    if !preview.is_empty() {
+        lines.push(Line::from(vec![Span::raw("  "), preview_span]));
     }
 
     let paragraph = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });

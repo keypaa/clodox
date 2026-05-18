@@ -63,7 +63,7 @@ impl Default for StatusLine {
 fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
 
-    let model_short = shorten_model(&state.main_loop_model);
+    let model_short = shorten_model(&state.main_loop_model.name);
     spans.push(Span::styled(
         model_short,
         Style::default().fg(ratatui::style::Color::Cyan),

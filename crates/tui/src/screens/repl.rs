@@ -206,6 +206,9 @@ fn message_to_render_message(msg: &cc_core::messages::Message) -> RenderMessage 
                             status: Some("Running…".to_string()),
                             is_resolved: false,
                             is_error: false,
+                            output: None,
+                            is_expanded: false,
+                            duration_ms: None,
                         }
                     }
                     None => RenderMessage::AssistantText { text: String::new() },

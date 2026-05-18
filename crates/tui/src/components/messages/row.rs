@@ -11,7 +11,8 @@ use crate::components::messages::user_text::{
     render_user_text, render_user_prompt, render_user_command,
     render_user_tool_result, render_assistant_text,
     render_assistant_tool_use, render_assistant_thinking,
-    render_system_error,
+    render_system_error, render_assistant_tool_use_streaming,
+    render_tool_result_inline,
 };
 use crate::components::messages::rate_limit::render_rate_limit;
 
@@ -38,6 +39,9 @@ pub enum RenderMessage {
         status: Option<String>,
         is_resolved: bool,
         is_error: bool,
+        output: Option<String>,
+        is_expanded: bool,
+        duration_ms: Option<u64>,
     },
     /// Assistant thinking.
     AssistantThinking { thinking: String, is_expanded: bool },
@@ -45,6 +49,17 @@ pub enum RenderMessage {
     SystemError { error: String },
     /// Rate limit warning.
     RateLimit { text: String, upgrade_hint: Option<String> },
+    /// Streaming tool use (partial JSON being built).
+    AssistantToolUseStreaming {
+        tool_name: String,
+        partial_json: String,
+    },
+    /// Inline tool result in message flow.
+    ToolResultInline {
+        tool_name: String,
+        success: bool,
+        output_preview: String,
+    },
 }
 
 /// Render a message row.
@@ -104,6 +119,8 @@ pub fn render_message_row(
             status,
             is_resolved,
             is_error,
+            duration_ms,
+            ..
         } => {
             render_assistant_tool_use(
                 frame,
@@ -113,6 +130,7 @@ pub fn render_message_row(
                 status.as_deref(),
                 *is_resolved,
                 *is_error,
+                *duration_ms,
                 theme,
             );
         }
@@ -130,6 +148,12 @@ pub fn render_message_row(
             upgrade_hint,
         } => {
             render_rate_limit(frame, layout[1], text, upgrade_hint.as_deref(), theme);
+        }
+        RenderMessage::AssistantToolUseStreaming { tool_name, partial_json } => {
+            render_assistant_tool_use_streaming(frame, layout[1], tool_name, partial_json, theme);
+        }
+        RenderMessage::ToolResultInline { tool_name, success, output_preview } => {
+            render_tool_result_inline(frame, layout[1], tool_name, *success, output_preview, theme);
         }
     }
 }
@@ -184,9 +208,11 @@ fn estimate_message_height(message: &RenderMessage, width: u16) -> u16 {
             let wrapped = text.len() / width as usize + 1;
             (lines.max(wrapped) as u16).max(1)
         }
-        RenderMessage::AssistantToolUse { status, .. } => {
-            // Tool name line + optional status line
-            if status.is_some() { 2 } else { 1 }
+        RenderMessage::AssistantToolUse { status, output, is_expanded, .. } => {
+            let mut h = 1;
+            if status.is_some() { h += 1; }
+            if *is_expanded && output.is_some() { h += 3; }
+            h
         }
         RenderMessage::AssistantThinking { is_expanded, .. } => {
             if *is_expanded { 2 } else { 1 }
@@ -195,5 +221,13 @@ fn estimate_message_height(message: &RenderMessage, width: u16) -> u16 {
             if error.len() > 1000 { 2 } else { 1 }
         }
         RenderMessage::RateLimit { .. } => 1,
+        RenderMessage::AssistantToolUseStreaming { partial_json, .. } => {
+            let lines = partial_json.lines().count();
+            (lines as u16).max(1).min(4)
+        }
+        RenderMessage::ToolResultInline { output_preview, .. } => {
+            let lines = output_preview.lines().count();
+            (lines as u16).max(1).min(3)
+        }
     }
 }

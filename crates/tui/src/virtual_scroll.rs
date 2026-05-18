@@ -374,6 +374,14 @@ fn estimate_message_height(message: &RenderMessage, width: u16) -> u16 {
             }
             h.max(1)
         }
+        RenderMessage::AssistantToolUseStreaming { partial_json, .. } => {
+            let lines = partial_json.lines().count();
+            (lines as u16).max(1).min(4) + 1
+        }
+        RenderMessage::ToolResultInline { output_preview, .. } => {
+            let lines = output_preview.lines().count();
+            (lines as u16).max(1).min(3) + 1
+        }
     }
 }
 
@@ -707,6 +715,7 @@ fn message_to_lines(
             status,
             is_resolved,
             is_error,
+            ..
         } => {
             let loader_color = if *is_error {
                 theme.colors.error
@@ -805,6 +814,42 @@ fn message_to_lines(
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(hint.clone(), dim_style),
+                ]));
+            }
+        }
+        RenderMessage::AssistantToolUseStreaming { tool_name, partial_json } => {
+            let preview = if partial_json.len() > 60 {
+                format!("{}…", &partial_json[..57])
+            } else {
+                partial_json.clone()
+            };
+            lines.push(Line::from(vec![
+                Span::styled(format!("● {}", tool_name), bold_style),
+                Span::raw(" "),
+                Span::styled(preview, dim_style),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("└─ building…", Style::default().fg(theme.colors.suggestion)),
+            ]));
+        }
+        RenderMessage::ToolResultInline { tool_name, success, output_preview } => {
+            let icon = if *success { "✓" } else { "✗" };
+            let icon_style = if *success { success_style } else { error_style };
+            lines.push(Line::from(vec![
+                Span::styled(icon, icon_style),
+                Span::raw(" "),
+                Span::styled(tool_name.clone(), bold_style),
+            ]));
+            if !output_preview.is_empty() {
+                let preview = if output_preview.len() > 80 {
+                    format!("{}…", &output_preview[..77])
+                } else {
+                    output_preview.clone()
+                };
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(preview, dim_style),
                 ]));
             }
         }

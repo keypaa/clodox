@@ -7,6 +7,7 @@ edition.workspace = true
 cc-core.workspace = true
 cc-tools.workspace = true
 cc-query.workspace = true
+cc-commands.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
@@ -15,6 +16,7 @@ tracing.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 dirs.workspace = true
+futures.workspace = true
 
 # TUI
 ratatui = "0.29"

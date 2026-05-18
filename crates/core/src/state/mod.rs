@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 
+use crate::messages::Message;
 use crate::permissions::{ToolPermissionContext, ToolPermissionRulesBySource};
 use crate::tools::Tools;
 use crate::types::{
@@ -236,6 +237,12 @@ pub struct ModelSetting {
     pub provider: String,
 }
 
+impl std::fmt::Display for ModelSetting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 /// Settings JSON (simplified).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SettingsJson {
@@ -253,6 +260,82 @@ pub struct SettingsJson {
     pub max_budget_usd: Option<f64>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// Token counts from API responses.
+#[derive(Debug, Clone, Default)]
+pub struct TokenCounts {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+}
+
+/// Per-turn token breakdown.
+#[derive(Debug, Clone, Default)]
+pub struct TurnTokenCounts {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub cost_usd: f64,
+}
+
+/// Query lifecycle state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QueryState {
+    #[default]
+    Idle,
+    Sending,
+    Streaming,
+    ToolPending,
+    ToolRunning,
+    Compacting,
+    Cancelling,
+    Error,
+}
+
+/// Pending tool call awaiting permission/execution.
+#[derive(Debug, Clone)]
+pub struct PendingToolCall {
+    pub id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+    pub display_text: String,
+}
+
+/// Permission dialog state for inline display.
+#[derive(Debug, Clone)]
+pub struct PermissionDialogState {
+    pub tool_name: String,
+    pub tool_input: serde_json::Value,
+    pub tool_display: String,
+    pub tool_call_id: String,
+}
+
+impl Default for PermissionDialogState {
+    fn default() -> Self {
+        Self {
+            tool_name: String::new(),
+            tool_input: serde_json::Value::Null,
+            tool_display: String::new(),
+            tool_call_id: String::new(),
+        }
+    }
+}
+
+/// Exit confirmation state (for Ctrl+C double-press).
+#[derive(Debug)]
+pub struct ExitConfirmation {
+    pub first_press_time: std::time::Instant,
+}
+
+impl Clone for ExitConfirmation {
+    fn clone(&self) -> Self {
+        Self {
+            first_press_time: std::time::Instant::now(),
+        }
+    }
 }
 
 /// The main AppState.
@@ -302,6 +385,9 @@ pub struct AppState {
     pub file_history_state: FileHistoryState,
     pub attribution_state: AttributionState,
     pub thinking_mode: bool,
+    pub thinking_enabled: bool,
+    pub fast_mode: bool,
+    pub effort: EffortValue,
     pub prompt_suggestions: Vec<String>,
     pub session_hooks_state: SessionHooksState,
     pub inbox_messages: Vec<InboxMessage>,
@@ -311,6 +397,27 @@ pub struct AppState {
     pub worker_sandbox_permissions: HashMap<String, Vec<String>>,
     pub ultra_plan_state: Option<UltraPlanState>,
     pub todo_list: Option<TodoList>,
+    // Conversation state
+    pub messages: Vec<Message>,
+    pub token_counts: TokenCounts,
+    pub total_cost_usd: f64,
+    pub is_querying: bool,
+    pub session_id: Option<String>,
+    pub transcript_mode: bool,
+    pub show_all_in_transcript: bool,
+    pub brief_mode: bool,
+    pub vim_mode: bool,
+    pub is_exiting: bool,
+    pub exit_confirmation: Option<ExitConfirmation>,
+    // Query lifecycle (Phase 9)
+    pub query_state: QueryState,
+    pub streaming_text: Option<String>,
+    pub streaming_thinking: Option<String>,
+    pub streaming_tool_json: HashMap<String, String>,
+    pub pending_tool_calls: Vec<PendingToolCall>,
+    pub pending_permission_dialog: Option<PermissionDialogState>,
+    pub current_turn_tokens: Option<TurnTokenCounts>,
+    pub query_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -458,6 +565,9 @@ impl Default for AppState {
             file_history_state: FileHistoryState::default(),
             attribution_state: AttributionState::default(),
             thinking_mode: false,
+            thinking_enabled: false,
+            fast_mode: false,
+            effort: EffortValue::Medium,
             prompt_suggestions: Vec::new(),
             session_hooks_state: SessionHooksState::default(),
             inbox_messages: Vec::new(),
@@ -467,6 +577,25 @@ impl Default for AppState {
             worker_sandbox_permissions: HashMap::new(),
             ultra_plan_state: None,
             todo_list: None,
+            messages: Vec::new(),
+            token_counts: TokenCounts::default(),
+            total_cost_usd: 0.0,
+            is_querying: false,
+            session_id: None,
+            transcript_mode: false,
+            show_all_in_transcript: false,
+            brief_mode: false,
+            vim_mode: false,
+            is_exiting: false,
+            exit_confirmation: None,
+            query_state: QueryState::Idle,
+            streaming_text: None,
+            streaming_thinking: None,
+            streaming_tool_json: HashMap::new(),
+            pending_tool_calls: Vec::new(),
+            pending_permission_dialog: None,
+            current_turn_tokens: None,
+            query_error: None,
         }
     }
 }

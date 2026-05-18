@@ -19,6 +19,7 @@ license = "MIT"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 async-trait = "0.1"
 futures = "0.3"
 
@@ -58,6 +59,9 @@ dirs = "5"
 
 # Collections
 indexmap = { version = "2", features = ["serde"] }
+
+# Fuzzy matching
+strsim = "0.11"
 
 # Internal
 cc-core = { path = "crates/core" }

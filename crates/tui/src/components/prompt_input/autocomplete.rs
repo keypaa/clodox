@@ -84,6 +84,22 @@ impl AutocompleteState {
         }
     }
 
+    pub fn update_with_suggestions(&mut self, input: &str, suggestions: Vec<String>) {
+        if input.starts_with('/') {
+            self.prefix = input.to_string();
+            self.matches = suggestions
+                .into_iter()
+                .map(|name| SlashCommand::new(&name, "", ""))
+                .collect();
+            self.active = !self.matches.is_empty();
+            self.selected_index = 0;
+        } else {
+            self.active = false;
+            self.matches.clear();
+            self.prefix.clear();
+        }
+    }
+
     pub fn select_next(&mut self) {
         if !self.matches.is_empty() {
             self.selected_index = (self.selected_index + 1) % self.matches.len();

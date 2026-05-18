@@ -70,7 +70,7 @@ impl LogoHeader {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| ".".to_string());
 
-        let model_short = shorten_model(&state.main_loop_model);
+        let model_short = shorten_model(&state.main_loop_model.name);
 
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),

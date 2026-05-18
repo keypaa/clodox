@@ -111,6 +111,19 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 
 10. **Computer Use**: MCP-based screen control. Defer.
 
+11. **MCP Commands (`/mcp`)**: Stubs in Phase 5. Full implementation needs Phase 6 Service Layer:
+    - MCP server lifecycle management (start/stop/restart servers)
+    - Server connection status display
+    - Tool listing from connected servers
+    - Dynamic MCP config add/remove/enable/disable
+    - Server stdout/stderr logging
+    - OAuth flow for MCP servers requiring auth
+    - Resource browsing from MCP servers
+    - Elicitation handler for MCP prompts
+    - Server-scoped permission rules
+    - Plugin reconnect key management
+    - MCP command registration from server tools
+
 ---
 
 ## Build Commands

@@ -10,25 +10,67 @@ use crate::components::spinner::with_verb::{SpinnerWithVerb, IdleStatus};
 use crate::components::prompt_input::text_input::TextInputWidget;
 use crate::components::prompt_input::footer::{PromptFooter, PromptMode};
 use crate::components::prompt_input::autocomplete::{AutocompleteWidget, AutocompleteState};
+use crate::components::permissions::dialog::{PermissionDialog, PermissionDialogWidget};
 use crate::screens::logo_header::{LogoHeader, LogoHeaderWidget};
+use crate::screens::login::{LoginScreen, LoginScreenWidget};
+use crate::screens::resume::{ResumePicker, ResumePickerWidget};
 use crate::virtual_scroll::{VirtualMessageList, NewMessagesPill};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FullscreenMode {
+    Chat,
+    Login,
+    Resume,
+}
 
 pub struct FullscreenScreen {
     theme: Theme,
+    mode: FullscreenMode,
     virtual_list: VirtualMessageList,
     is_querying: bool,
     reduced_motion: bool,
     has_rendered: bool,
+    login_screen: LoginScreen,
+    resume_picker: ResumePicker,
 }
 
 impl FullscreenScreen {
     pub fn new(theme: Theme) -> Self {
         Self {
             theme,
+            mode: FullscreenMode::Chat,
             virtual_list: VirtualMessageList::new(),
             is_querying: false,
             reduced_motion: false,
             has_rendered: false,
+            login_screen: LoginScreen::new(),
+            resume_picker: ResumePicker::new(ResumePicker::load_sessions()),
+        }
+    }
+
+    pub fn new_login(theme: Theme) -> Self {
+        Self {
+            theme,
+            mode: FullscreenMode::Login,
+            virtual_list: VirtualMessageList::new(),
+            is_querying: false,
+            reduced_motion: false,
+            has_rendered: false,
+            login_screen: LoginScreen::new(),
+            resume_picker: ResumePicker::new(ResumePicker::load_sessions()),
+        }
+    }
+
+    pub fn new_resume(theme: Theme) -> Self {
+        Self {
+            theme,
+            mode: FullscreenMode::Resume,
+            virtual_list: VirtualMessageList::new(),
+            is_querying: false,
+            reduced_motion: false,
+            has_rendered: false,
+            login_screen: LoginScreen::new(),
+            resume_picker: ResumePicker::new(ResumePicker::load_sessions()),
         }
     }
 
@@ -70,6 +112,33 @@ impl FullscreenScreen {
     }
 
     pub fn render(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        input_text: &str,
+        cursor_pos: usize,
+        autocomplete: &AutocompleteState,
+        state: &AppState,
+    ) {
+        match self.mode {
+            FullscreenMode::Login => {
+                let widget = LoginScreenWidget::new(&self.login_screen, &self.theme);
+                frame.render_widget(widget, area);
+            }
+            FullscreenMode::Resume => {
+                let widget = ResumePickerWidget::new(&self.resume_picker, &self.theme);
+                frame.render_widget(widget, area);
+            }
+            FullscreenMode::Chat => {
+                self.render_chat(frame, area, input_text, cursor_pos, autocomplete);
+                if let Some(ref dialog_state) = state.pending_permission_dialog {
+                    self.render_permission_dialog(frame, area, dialog_state);
+                }
+            }
+        }
+    }
+
+    fn render_chat(
         &mut self,
         frame: &mut ratatui::Frame,
         area: Rect,
@@ -247,6 +316,40 @@ impl FullscreenScreen {
             }
         }
     }
+
+    fn render_permission_dialog(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        dialog_state: &cc_core::state::PermissionDialogState,
+    ) {
+        use cc_core::permissions::RiskLevel;
+
+        let risk = match dialog_state.tool_name.as_str() {
+            "bash" => {
+                if dialog_state.tool_display.contains("rm ") || dialog_state.tool_display.contains("sudo ") {
+                    RiskLevel::High
+                } else if dialog_state.tool_display.contains("git ") || dialog_state.tool_display.contains("ls ") {
+                    RiskLevel::Low
+                } else {
+                    RiskLevel::Medium
+                }
+            }
+            "write" | "edit" => RiskLevel::Medium,
+            "read" | "grep" | "glob" => RiskLevel::Low,
+            _ => RiskLevel::Medium,
+        };
+
+        let dialog = PermissionDialog::new(
+            &format!("Allow {}?", dialog_state.tool_name),
+            &format!("This tool call requires your approval:\n\n{}", dialog_state.tool_display),
+            &dialog_state.tool_display,
+            risk,
+        );
+
+        let widget = PermissionDialogWidget::new(&dialog, &self.theme, area);
+        frame.render_widget(widget, area);
+    }
 }
 
 fn message_to_render_message(msg: &cc_core::messages::Message) -> RenderMessage {
@@ -292,6 +395,9 @@ fn message_to_render_message(msg: &cc_core::messages::Message) -> RenderMessage 
                             status: Some("Running…".to_string()),
                             is_resolved: false,
                             is_error: false,
+                            output: None,
+                            is_expanded: false,
+                            duration_ms: None,
                         }
                     }
                     None => RenderMessage::AssistantText { text: String::new() },
