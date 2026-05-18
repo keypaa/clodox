@@ -153,23 +153,29 @@ impl ReplScreen {
             ])
             .split(left_inner);
 
-        // Welcome text with raw string to preserve spaces
-        let welcome_text = r#"Welcome back my Thane!
+        // Build welcome text with separate colors
+        let alien_style = Style::default().fg(accent_color);
+        let welcome_line_style = Style::default()
+            .fg(ratatui::style::Color::White)
+            .add_modifier(Modifier::BOLD);
 
-   ▄   ▄   
-  ███████  
- █████████ 
- ██ ███ ██ 
-  █   █    
-"#;
+        let welcome_lines = vec![
+            Line::from(vec![Span::styled("Welcome back my Thane!", welcome_line_style)]),
+            Line::from(""),
+            Line::from(vec![Span::styled("   ▄   ▄   ", alien_style)]),
+            Line::from(vec![Span::styled("  ███████  ", alien_style)]),
+            Line::from(vec![Span::styled(" █████████ ", alien_style)]),
+            Line::from(vec![Span::styled(" ██ ███ ██ ", alien_style)]),
+            Line::from(vec![Span::styled("  █   █    ", alien_style)]),
+        ];
 
+        let welcome_text = ratatui::text::Text::from(welcome_lines);
         let welcome_paragraph = Paragraph::new(welcome_text)
-            .style(Style::default().fg(accent_color))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(welcome_paragraph, left_sub_layout[0]);
 
-        // Bottom info text
-        let info_text = "Sonnet 4.6 · Claude Pro · Organization\n          ~/GitHub/simplespace";
+        // Bottom info text with left padding
+        let info_text = "  Sonnet 4.6 · Claude Pro · Organization\n            ~/GitHub/simplespace";
         let info_paragraph = Paragraph::new(info_text)
             .style(Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM));
         frame.render_widget(info_paragraph, left_sub_layout[1]);
