@@ -296,7 +296,7 @@ impl Themeable for ResumePickerWidget<'_> {
         }
 
         let lines = self.picker.render_lines(area.width);
-        let dialog_height = lines.len() as u16 + 4;
+        let dialog_height = lines.len() as u16 + 2;
         let dialog_width = 70.min(area.width);
 
         let x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
@@ -341,7 +341,7 @@ impl Themeable for ResumePickerWidget<'_> {
                     cell.set_symbol("─");
                     cell.set_style(border_style);
                 } else {
-                    let content_idx = dy.saturating_sub(2);
+                    let content_idx = dy - 1;
                     if content_idx < lines.len() as u16 {
                         let line = &lines[content_idx as usize];
                         let mut char_idx = 0u16;
