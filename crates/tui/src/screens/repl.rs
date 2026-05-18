@@ -128,6 +128,21 @@ impl ReplScreen {
         area: Rect,
         accent_color: ratatui::style::Color,
     ) {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(55),
+                Constraint::Percentage(45),
+            ])
+            .split(area);
+
+        let left_block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(accent_color));
+
+        let left_inner = left_block.inner(layout[0]);
+        frame.render_widget(left_block, layout[0]);
+
         let dim_style = Style::default()
             .fg(ratatui::style::Color::DarkGray)
             .add_modifier(Modifier::DIM);
@@ -136,50 +151,78 @@ impl ReplScreen {
             .fg(ratatui::style::Color::White)
             .add_modifier(Modifier::BOLD);
 
+        let alien_style = Style::default().fg(accent_color);
+
+        let left_width = left_inner.width as usize;
+
+        let welcome = "Welcome back my Thane!";
+        let welcome_padding = left_width.saturating_sub(welcome.len()) / 2;
+
+        let alien = vec![
+            "  ▐▛███▜▌  ",
+            " ▝▜█████▛▘ ",
+            "   ▘▘ ▝   ",
+        ];
+
+        let model_info = vec![
+            "Sonnet 4.6 · Claude Pro · Organization",
+            "~/GitHub/simplespace",
+        ];
+
+        let mut left_content = Vec::new();
+
+        left_content.push(Line::from(vec![
+            Span::raw(" ".repeat(welcome_padding)),
+            Span::styled(welcome, welcome_style),
+        ]));
+
+        left_content.push(Line::from(vec![Span::raw("")]));
+
+        for alien_line in &alien {
+            let alien_padding = left_width.saturating_sub(alien_line.len()) / 2;
+            left_content.push(Line::from(vec![
+                Span::raw(" ".repeat(alien_padding)),
+                Span::styled(*alien_line, alien_style),
+            ]));
+        }
+
+        left_content.push(Line::from(vec![Span::raw("")]));
+
+        for info_line in &model_info {
+            let info_padding = left_width.saturating_sub(info_line.len()) / 2;
+            left_content.push(Line::from(vec![
+                Span::raw(" ".repeat(info_padding)),
+                Span::styled(*info_line, dim_style),
+            ]));
+        }
+
+        let left_paragraph = Paragraph::new(left_content);
+        frame.render_widget(left_paragraph, left_inner);
+
         let tips_style = Style::default()
             .fg(accent_color)
             .add_modifier(Modifier::BOLD);
 
-        let separator = "─".repeat(30);
+        let separator = "─".repeat(25);
         let separator_style = Style::default()
             .fg(ratatui::style::Color::DarkGray)
             .add_modifier(Modifier::DIM);
 
-        let content = vec![
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled("Welcome back!", welcome_style),
-            ]),
+        let right_content = vec![
+            Line::from(vec![Span::styled("Tips for getting started", tips_style)]),
+            Line::from(vec![Span::styled(separator.clone(), separator_style.clone())]),
+            Line::from(vec![Span::styled(
+                "Run /init to create a CLAUDE.md file with instruc...",
+                dim_style,
+            )]),
             Line::from(vec![Span::raw("")]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled("Tips for getting started", tips_style),
-            ]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled(separator.clone(), separator_style.clone()),
-            ]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled("Run /init to create a CLAUDE.md file...", dim_style),
-            ]),
-            Line::from(vec![Span::raw("")]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled("Recent activity", tips_style),
-            ]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled(separator, separator_style),
-            ]),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled("No recent activity", dim_style),
-            ]),
+            Line::from(vec![Span::styled("Recent activity", tips_style)]),
+            Line::from(vec![Span::styled(separator, separator_style)]),
+            Line::from(vec![Span::styled("No recent activity", dim_style)]),
         ];
 
-        let paragraph = Paragraph::new(content);
-        frame.render_widget(paragraph, area);
+        let right_paragraph = Paragraph::new(right_content);
+        frame.render_widget(right_paragraph, layout[1]);
     }
 
     fn render_prompt_input(
