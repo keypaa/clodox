@@ -7,6 +7,7 @@ members = [
     "crates/services",
     "crates/bridge",
     "crates/cli",
+    "crates/tui",
 ]
 resolver = "2"
 
@@ -65,3 +66,4 @@ cc-tools = { path = "crates/tools" }
 cc-commands = { path = "crates/commands" }
 cc-services = { path = "crates/services" }
 cc-bridge = { path = "crates/bridge" }
+cc-tui = { path = "crates/tui" }

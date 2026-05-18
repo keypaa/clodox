@@ -212,6 +212,11 @@ async fn handle_print_mode(cli: &Cli) -> anyhow::Result<()> {
 async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     tracing::info!("Interactive mode");
 
+    // Check if stdout is a TTY
+    if !cc_tui::terminal::TerminalManager::is_tty() {
+        anyhow::bail!("Interactive mode requires a terminal. Use -p for non-interactive mode.");
+    }
+
     // Initialize or resume session
     let session = if cli.r#continue {
         // Continue most recent conversation
@@ -248,22 +253,8 @@ async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     // Set up graceful shutdown
     let shutdown = session::GracefulShutdown::new();
 
-    // TODO: Initialize tools, load settings, launch TUI
-    // For now, print a placeholder
-    println!("Claude Code (Rust port) — Interactive Mode");
-    println!("Session: {}", session.id);
-    println!("(TUI not yet implemented)");
-    println!();
-
-    if let Some(ref prompt) = cli.prompt {
-        println!("Initial prompt: {}", prompt);
-    }
-
-    println!("Type /help for available commands, or enter a prompt.");
-    println!("Press Ctrl+C to exit.");
-
-    // Wait for shutdown signal
-    shutdown.wait_for_signal().await?;
+    // Launch the TUI
+    cc_tui::main_loop::run_tui()?;
 
     // Graceful shutdown
     tracing::info!("Shutting down session: {}", session.id);

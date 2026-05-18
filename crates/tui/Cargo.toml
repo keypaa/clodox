@@ -1,0 +1,35 @@
+[package]
+name = "cc-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cc-core.workspace = true
+cc-tools.workspace = true
+cc-query.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Markdown + syntax highlighting
+comrak = { version = "0.31", default-features = false, features = ["syntect"] }
+syntect = "5"
+
+# Unicode
+unicode-width = "0.2"
+unicode-segmentation = "1"
+
+# LRU cache
+lru = "0.12"
+
+# Time
+instant = "0.1"
