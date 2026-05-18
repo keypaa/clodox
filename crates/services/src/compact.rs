@@ -369,3 +369,74 @@ impl CompactService {
         self.history.read().await.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compaction_summary_tokens_saved() {
+        let summary = CompactionSummary {
+            messages_before: 100,
+            messages_after: 20,
+            tokens_before: 50_000,
+            tokens_after: 10_000,
+            strategy: CompactionStrategy::Summarize,
+            duration_ms: 500,
+        };
+        assert_eq!(summary.tokens_saved(), 40_000);
+        assert_eq!(summary.messages_removed(), 80);
+    }
+
+    #[test]
+    fn test_compaction_summary_default() {
+        let summary = CompactionSummary::default();
+        assert_eq!(summary.messages_before, 0);
+        assert_eq!(summary.messages_after, 0);
+        assert_eq!(summary.tokens_saved(), 0);
+    }
+
+    #[test]
+    fn test_compaction_strategy_default() {
+        let strategy = CompactionStrategy::default();
+        assert_eq!(strategy, CompactionStrategy::Summarize);
+    }
+
+    #[tokio::test]
+    async fn test_needs_compaction_below_threshold() {
+        let service = CompactService::new(10_000);
+        assert!(!service.needs_compaction(5).await);
+    }
+
+    #[tokio::test]
+    async fn test_needs_compaction_above_threshold() {
+        let service = CompactService::new(10_000);
+        assert!(service.needs_compaction(20).await);
+    }
+
+    #[tokio::test]
+    async fn test_compact_small_list() {
+        let service = CompactService::new(10_000);
+        let messages = vec![];
+        let (compacted, summary) = service.compact(messages, "test-model").await;
+        assert_eq!(compacted.len(), 0);
+        assert_eq!(summary.messages_before, 0);
+        assert_eq!(summary.messages_after, 0);
+    }
+
+    #[tokio::test]
+    async fn test_set_and_get_strategy() {
+        let service = CompactService::new(10_000);
+        service.set_strategy(CompactionStrategy::FifoEviction).await;
+        assert_eq!(service.get_strategy().await, CompactionStrategy::FifoEviction);
+    }
+
+    #[tokio::test]
+    async fn test_history_tracks_compactions() {
+        let service = CompactService::new(10_000);
+        let messages = vec![];
+        let _ = service.compact(messages, "test-model").await;
+        assert_eq!(service.compaction_count().await, 1);
+        assert!(service.total_tokens_saved().await >= 0);
+    }
+}

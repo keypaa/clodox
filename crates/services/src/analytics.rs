@@ -280,3 +280,145 @@ pub struct SessionMetrics {
     pub compactions: usize,
     pub total_events: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_feature_flag_value_expiry() {
+        let flag = FeatureFlagValue {
+            value: serde_json::json!(true),
+            evaluated_at: Instant::now() - std::time::Duration::from_secs(600),
+            ttl: std::time::Duration::from_secs(300),
+        };
+        assert!(flag.is_expired());
+    }
+
+    #[test]
+    fn test_feature_flag_value_not_expired() {
+        let flag = FeatureFlagValue {
+            value: serde_json::json!(true),
+            evaluated_at: Instant::now(),
+            ttl: std::time::Duration::from_secs(300),
+        };
+        assert!(!flag.is_expired());
+    }
+
+    #[tokio::test]
+    async fn test_session_metrics_default() {
+        let metrics = SessionMetrics::default();
+        assert_eq!(metrics.duration_ms, 0);
+        assert_eq!(metrics.tools_used, 0);
+        assert_eq!(metrics.commands_executed, 0);
+        assert_eq!(metrics.errors, 0);
+        assert_eq!(metrics.compactions, 0);
+        assert_eq!(metrics.total_events, 0);
+    }
+
+    #[tokio::test]
+    async fn test_track_event() {
+        let service = AnalyticsService::new(1000);
+        service.track(AnalyticsEvent::SessionStart {
+            session_id: "test".to_string(),
+            model: "test-model".to_string(),
+        }).await;
+        assert_eq!(service.event_count().await, 1);
+        assert_eq!(service.buffered_event_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_track_tool_used() {
+        let service = AnalyticsService::new(1000);
+        service.track_tool_used("Bash", true, 100).await;
+        let events = service.get_events().await;
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            AnalyticsEvent::ToolUsed { tool_name, success, duration_ms } => {
+                assert_eq!(tool_name, "Bash");
+                assert!(success);
+                assert_eq!(*duration_ms, 100);
+            }
+            _ => panic!("Expected ToolUsed event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_track_command() {
+        let service = AnalyticsService::new(1000);
+        service.track_command("/help", 0).await;
+        let events = service.get_events().await;
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            AnalyticsEvent::CommandExecuted { command_name, args_length } => {
+                assert_eq!(command_name, "/help");
+                assert_eq!(*args_length, 0);
+            }
+            _ => panic!("Expected CommandExecuted event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_track_error() {
+        let service = AnalyticsService::new(1000);
+        service.track_error("APIError", "Connection refused").await;
+        let events = service.get_events().await;
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            AnalyticsEvent::Error { error_type, error_message } => {
+                assert_eq!(error_type, "APIError");
+                assert_eq!(error_message, "Connection refused");
+            }
+            _ => panic!("Expected Error event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_feature_flags() {
+        let service = AnalyticsService::new(1000);
+        service.set_feature_flag(
+            "test_flag",
+            serde_json::json!(true),
+            std::time::Duration::from_secs(300),
+        ).await;
+        assert_eq!(
+            service.get_feature_flag("test_flag", serde_json::json!(false)).await,
+            serde_json::json!(true)
+        );
+        assert!(service.get_feature_flag_bool("test_flag", false).await);
+    }
+
+    #[tokio::test]
+    async fn test_feature_flag_default() {
+        let service = AnalyticsService::new(1000);
+        assert_eq!(
+            service.get_feature_flag("nonexistent", serde_json::json!("default")).await,
+            serde_json::json!("default")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_clear_events() {
+        let service = AnalyticsService::new(1000);
+        service.track(AnalyticsEvent::SessionStart {
+            session_id: "test".to_string(),
+            model: "test".to_string(),
+        }).await;
+        assert_eq!(service.buffered_event_count().await, 1);
+        service.clear_events().await;
+        assert_eq!(service.buffered_event_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_session_metrics() {
+        let service = AnalyticsService::new(1000);
+        service.track_tool_used("Bash", true, 100).await;
+        service.track_command("/help", 0).await;
+        service.track_error("Test", "error").await;
+
+        let metrics = service.get_session_metrics().await;
+        assert_eq!(metrics.tools_used, 1);
+        assert_eq!(metrics.commands_executed, 1);
+        assert_eq!(metrics.errors, 1);
+    }
+}

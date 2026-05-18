@@ -328,3 +328,131 @@ impl ApiService {
         self.cache.len().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_entry_expiry() {
+        let entry = CacheEntry {
+            response: cc_query::api_types::MessageResponse {
+                id: "test".to_string(),
+                response_type: "message".to_string(),
+                role: "assistant".to_string(),
+                model: "test".to_string(),
+                content: vec![],
+                usage: cc_query::api_types::Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_read_input_tokens: None,
+                    cache_creation_input_tokens: None,
+                },
+                stop_reason: None,
+                stop_sequence: None,
+            },
+            timestamp: Instant::now() - Duration::from_secs(600),
+            ttl: Duration::from_secs(300),
+        };
+        assert!(entry.is_expired());
+    }
+
+    #[test]
+    fn test_cache_entry_not_expired() {
+        let entry = CacheEntry {
+            response: cc_query::api_types::MessageResponse {
+                id: "test".to_string(),
+                response_type: "message".to_string(),
+                role: "assistant".to_string(),
+                model: "test".to_string(),
+                content: vec![],
+                usage: cc_query::api_types::Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_read_input_tokens: None,
+                    cache_creation_input_tokens: None,
+                },
+                stop_reason: None,
+                stop_sequence: None,
+            },
+            timestamp: Instant::now(),
+            ttl: Duration::from_secs(300),
+        };
+        assert!(!entry.is_expired());
+    }
+
+    #[test]
+    fn test_rate_limit_config_defaults() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.max_requests_per_minute, 50);
+        assert_eq!(config.max_tokens_per_minute, 100_000);
+        assert_eq!(config.max_concurrent, 5);
+    }
+
+    #[test]
+    fn test_request_stats_default() {
+        let stats = RequestStats::default();
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.total_retries, 0);
+        assert_eq!(stats.total_errors, 0);
+        assert_eq!(stats.total_cache_hits, 0);
+        assert_eq!(stats.total_tokens_used, 0);
+        assert!(stats.last_request_time.is_none());
+        assert_eq!(stats.rate_limit_hits, 0);
+    }
+
+    #[tokio::test]
+    async fn test_request_cache_insert_and_get() {
+        let cache = RequestCache::new(Duration::from_secs(300), 100);
+        let response = cc_query::api_types::MessageResponse {
+            id: "test".to_string(),
+            response_type: "message".to_string(),
+            role: "assistant".to_string(),
+            model: "test".to_string(),
+            content: vec![],
+            usage: cc_query::api_types::Usage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+            },
+            stop_reason: None,
+            stop_sequence: None,
+        };
+        cache.insert("key1".to_string(), response.clone()).await;
+        let retrieved = cache.get("key1").await;
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, "test");
+    }
+
+    #[tokio::test]
+    async fn test_request_cache_miss() {
+        let cache = RequestCache::new(Duration::from_secs(300), 100);
+        let result = cache.get("nonexistent").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_request_cache_clear() {
+        let cache = RequestCache::new(Duration::from_secs(300), 100);
+        let response = cc_query::api_types::MessageResponse {
+            id: "test".to_string(),
+            response_type: "message".to_string(),
+            role: "assistant".to_string(),
+            model: "test".to_string(),
+            content: vec![],
+            usage: cc_query::api_types::Usage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+            },
+            stop_reason: None,
+            stop_sequence: None,
+        };
+        cache.insert("key1".to_string(), response).await;
+        assert_eq!(cache.len().await, 1);
+        cache.clear().await;
+        assert_eq!(cache.len().await, 0);
+    }
+}

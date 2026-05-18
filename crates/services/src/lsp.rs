@@ -332,3 +332,122 @@ impl Default for LspService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_new_service_is_empty() {
+        let service = LspService::new();
+        assert_eq!(service.server_count().await, 0);
+        assert_eq!(service.connected_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_register_server() {
+        let service = LspService::new();
+        let config = LspServerConfig {
+            name: "rust-analyzer".to_string(),
+            command: "rust-analyzer".to_string(),
+            args: vec![],
+            file_patterns: vec!["*.rs".to_string()],
+            enabled: true,
+        };
+        service.register_server(config).await;
+        assert_eq!(service.server_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_stop_nonexistent_server() {
+        let service = LspService::new();
+        let result = service.stop_server("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_start_disabled_server() {
+        let service = LspService::new();
+        let config = LspServerConfig {
+            name: "test".to_string(),
+            command: "test".to_string(),
+            args: vec![],
+            file_patterns: vec![],
+            enabled: false,
+        };
+        service.register_server(config).await;
+        let result = service.start_server("test", Path::new("/tmp")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_server_for_file() {
+        let service = LspService::new();
+        let config = LspServerConfig {
+            name: "rust-analyzer".to_string(),
+            command: "rust-analyzer".to_string(),
+            args: vec![],
+            file_patterns: vec!["*.rs".to_string()],
+            enabled: true,
+        };
+        service.register_server(config).await;
+        let server = service.find_server_for_file(Path::new("test.rs")).await;
+        assert_eq!(server, Some("rust-analyzer".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_find_server_unknown_extension() {
+        let service = LspService::new();
+        let server = service.find_server_for_file(Path::new("test.unknown")).await;
+        assert!(server.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_diagnostics_empty() {
+        let service = LspService::new();
+        assert!(service.get_diagnostics("test.rs").await.is_empty());
+        assert!(service.get_all_diagnostics().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_code_actions_empty() {
+        let service = LspService::new();
+        assert!(service.get_code_actions("test.rs", 1, 1).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_completions_empty() {
+        let service = LspService::new();
+        assert!(service.get_completions("test.rs", 1, 1, None).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_symbols_empty() {
+        let service = LspService::new();
+        assert!(service.get_symbols("test").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_definition_none() {
+        let service = LspService::new();
+        assert!(service.get_definition("test.rs", 1, 1).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_hover_none() {
+        let service = LspService::new();
+        assert!(service.get_hover("test.rs", 1, 1).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_server_status_none() {
+        let service = LspService::new();
+        assert!(service.get_server_status("nonexistent").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_connected_servers_empty() {
+        let service = LspService::new();
+        assert!(service.get_connected_servers().await.is_empty());
+    }
+}

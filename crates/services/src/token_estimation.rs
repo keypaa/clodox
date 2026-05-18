@@ -261,3 +261,103 @@ impl Default for TokenEstimationService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_pricing_calculation() {
+        let pricing = ModelPricing {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+            cache_read_per_million: 0.30,
+            cache_creation_per_million: 3.75,
+        };
+        let cost = pricing.calculate_cost(1_000_000, 500_000, 200_000, 800_000);
+        assert!((cost - 13.56).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_token_estimate_with_cost() {
+        let estimate = TokenEstimate::default().with_cost(1.5);
+        assert!((estimate.estimated_cost - 1.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_estimate_tokens_from_text() {
+        let service = TokenEstimationService::new();
+        let text = "Hello, world!";
+        let tokens = service.estimate_tokens_from_text(text);
+        assert!(tokens > 0);
+        assert!(tokens <= 4);
+    }
+
+    #[test]
+    fn test_format_cost_small() {
+        assert_eq!(TokenEstimationService::format_cost(0.0012), "$0.0012");
+    }
+
+    #[test]
+    fn test_format_cost_medium() {
+        assert_eq!(TokenEstimationService::format_cost(0.123), "$0.123");
+    }
+
+    #[test]
+    fn test_format_cost_large() {
+        assert_eq!(TokenEstimationService::format_cost(12.34), "$12.34");
+    }
+
+    #[test]
+    fn test_registered_models() {
+        let service = TokenEstimationService::new();
+        let models = service.registered_models();
+        assert!(!models.is_empty());
+        assert!(models.iter().any(|m| m.contains("claude")));
+    }
+
+    #[test]
+    fn test_max_context_tokens() {
+        let service = TokenEstimationService::new();
+        assert_eq!(service.max_context_tokens("claude-sonnet-4-20250514"), 200_000);
+        assert_eq!(service.max_context_tokens("unknown-model"), 200_000);
+    }
+
+    #[test]
+    fn test_estimate_cost_known_model() {
+        let service = TokenEstimationService::new();
+        let cost = service.estimate_cost("claude-sonnet-4-20250514", 1_000_000, 500_000, 0, 0);
+        assert!((cost - 10.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_estimate_cost_unknown_model_fallback() {
+        let service = TokenEstimationService::new();
+        let cost = service.estimate_cost("unknown-model", 1_000_000, 500_000, 0, 0);
+        assert!((cost - 10.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_estimate_remaining() {
+        let service = TokenEstimationService::new();
+        let messages: Vec<cc_core::messages::Message> = vec![];
+        let (remaining, max) = service.estimate_remaining("claude-sonnet-4-20250514", &messages);
+        assert_eq!(max, 200_000);
+        assert_eq!(remaining, 200_000);
+    }
+
+    #[test]
+    fn test_register_custom_pricing() {
+        let mut service = TokenEstimationService::new();
+        service.register_model_pricing(
+            "custom-model",
+            ModelPricing {
+                input_per_million: 1.0,
+                output_per_million: 5.0,
+                cache_read_per_million: 0.10,
+                cache_creation_per_million: 1.25,
+            },
+        );
+        assert!(service.get_pricing("custom-model").is_some());
+    }
+}

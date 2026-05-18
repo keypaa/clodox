@@ -299,3 +299,95 @@ impl Default for PluginService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_new_service_is_empty() {
+        let service = PluginService::new();
+        assert_eq!(service.plugin_count().await, 0);
+        assert_eq!(service.enabled_count().await, 0);
+        assert_eq!(service.dir_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_plugin_dir() {
+        let service = PluginService::new();
+        service.add_plugin_dir(PathBuf::from("/tmp/plugins")).await;
+        assert_eq!(service.dir_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_scan_nonexistent_dir() {
+        let service = PluginService::new();
+        let result = service.scan_dir(&PathBuf::from("/tmp/nonexistent_dir_12345")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_scan_not_a_directory() {
+        let service = PluginService::new();
+        let result = service.scan_dir(&PathBuf::from("/etc/passwd")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_plugin_missing_manifest() {
+        let service = PluginService::new();
+        let result = service.load_plugin(&PathBuf::from("/tmp")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_empty_plugins() {
+        let service = PluginService::new();
+        assert!(service.get_plugin("test").await.is_none());
+        assert!(service.get_all_plugins().await.is_empty());
+        assert!(service.get_enabled_plugins().await.is_empty());
+        assert!(service.get_disabled_plugins().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_unload_nonexistent_plugin() {
+        let service = PluginService::new();
+        let result = service.unload_plugin("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_disable_nonexistent_plugin() {
+        let service = PluginService::new();
+        let result = service.disable_plugin("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_enable_nonexistent_plugin() {
+        let service = PluginService::new();
+        let result = service.enable_plugin("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_errors_empty() {
+        let service = PluginService::new();
+        assert!(service.get_errors().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_reload_empty() {
+        let service = PluginService::new();
+        let result = service.reload_all().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_tool_names_empty() {
+        let service = PluginService::new();
+        assert!(service.get_all_tool_names().await.is_empty());
+        assert!(service.get_all_command_names().await.is_empty());
+    }
+}

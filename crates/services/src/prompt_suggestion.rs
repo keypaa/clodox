@@ -274,3 +274,94 @@ impl Default for PromptSuggestionService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_suggestion_category_display() {
+        assert_eq!(SuggestionCategory::FollowUp.to_string(), "Follow-up");
+        assert_eq!(SuggestionCategory::Clarification.to_string(), "Clarification");
+        assert_eq!(SuggestionCategory::NextAction.to_string(), "Next Action");
+        assert_eq!(SuggestionCategory::Explore.to_string(), "Explore");
+        assert_eq!(SuggestionCategory::General.to_string(), "General");
+    }
+
+    #[test]
+    fn test_general_suggestions() {
+        let service = PromptSuggestionService::new();
+        let suggestions = service.get_general_suggestions();
+        assert!(!suggestions.is_empty());
+        assert!(suggestions.iter().any(|s| s.category == SuggestionCategory::General));
+    }
+
+    #[test]
+    fn test_keyword_suggestions() {
+        let service = PromptSuggestionService::new();
+        let suggestions = service.get_suggestions_for_keyword("error");
+        assert!(!suggestions.is_empty());
+        assert!(suggestions.iter().all(|s| s.context.contains("error")));
+    }
+
+    #[test]
+    fn test_keyword_partial_match() {
+        let service = PromptSuggestionService::new();
+        let suggestions = service.get_suggestions_for_keyword("testing");
+        assert!(!suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_suggestions_sorted_by_confidence() {
+        let service = PromptSuggestionService::new();
+        let messages: Vec<Message> = vec![];
+        let suggestions = service.generate_suggestions(&messages);
+        assert!(!suggestions.is_empty());
+        // Check they are sorted by confidence descending
+        for i in 1..suggestions.len() {
+            assert!(suggestions[i - 1].confidence >= suggestions[i].confidence);
+        }
+    }
+
+    #[test]
+    fn test_available_categories() {
+        let service = PromptSuggestionService::new();
+        let categories = service.get_available_categories();
+        assert_eq!(categories.len(), 5);
+    }
+
+    #[test]
+    fn test_count_by_category() {
+        let service = PromptSuggestionService::new();
+        let suggestions = vec![
+            PromptSuggestion {
+                text: "Test 1".to_string(),
+                category: SuggestionCategory::FollowUp,
+                confidence: 0.5,
+                context: "test".to_string(),
+            },
+            PromptSuggestion {
+                text: "Test 2".to_string(),
+                category: SuggestionCategory::FollowUp,
+                confidence: 0.5,
+                context: "test".to_string(),
+            },
+            PromptSuggestion {
+                text: "Test 3".to_string(),
+                category: SuggestionCategory::Explore,
+                confidence: 0.5,
+                context: "test".to_string(),
+            },
+        ];
+        let counts = service.count_by_category(&suggestions);
+        assert_eq!(counts[&SuggestionCategory::FollowUp], 2);
+        assert_eq!(counts[&SuggestionCategory::Explore], 1);
+    }
+
+    #[test]
+    fn test_empty_messages_returns_general() {
+        let service = PromptSuggestionService::new();
+        let suggestions = service.generate_suggestions(&[]);
+        assert!(!suggestions.is_empty());
+    }
+}

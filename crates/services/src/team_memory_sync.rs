@@ -321,3 +321,183 @@ impl TeamMemorySyncService {
         info!("Local memory cleared");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_new_service_is_empty() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        assert_eq!(service.entry_count().await, 0);
+        assert_eq!(service.team_name(), "test-team");
+        assert_eq!(service.agent_id(), "agent-1");
+    }
+
+    #[tokio::test]
+    async fn test_add_and_get_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        let entry = service.get_entry("key1").await;
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.key, "key1");
+        assert_eq!(entry.value, "value1");
+        assert_eq!(entry.author, "agent-1");
+        assert_eq!(entry.version, 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        assert!(service.get_entry("nonexistent").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        service.update_entry("key1", "value2").await.unwrap();
+        let entry = service.get_entry("key1").await.unwrap();
+        assert_eq!(entry.value, "value2");
+        assert_eq!(entry.version, 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        let result = service.update_entry("nonexistent", "value").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        service.delete_entry("key1").await.unwrap();
+        assert!(service.get_entry("key1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_entry() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        let result = service.delete_entry("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_all_entries() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        service.add_entry("key2", "value2").await.unwrap();
+        let entries = service.get_all_entries().await;
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_entries_by_author() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        service.add_entry("key2", "value2").await.unwrap();
+        let entries = service.get_entries_by_author("agent-1").await;
+        assert_eq!(entries.len(), 2);
+        let entries = service.get_entries_by_author("agent-2").await;
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_merge_new_entries() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        let remote = vec![
+            SharedMemoryEntry {
+                key: "key1".to_string(),
+                value: "value1".to_string(),
+                author: "agent-2".to_string(),
+                timestamp: chrono::Utc::now(),
+                version: 1,
+            },
+        ];
+        let events = service.merge_entries(remote).await;
+        assert!(events.iter().any(|e| matches!(e, SyncEvent::SyncCompleted { .. })));
+        assert_eq!(service.entry_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_merge_remote_newer_version() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "local").await.unwrap();
+        let remote = vec![
+            SharedMemoryEntry {
+                key: "key1".to_string(),
+                value: "remote".to_string(),
+                author: "agent-2".to_string(),
+                timestamp: chrono::Utc::now(),
+                version: 5,
+            },
+        ];
+        let _ = service.merge_entries(remote).await;
+        let entry = service.get_entry("key1").await.unwrap();
+        assert_eq!(entry.value, "remote");
+    }
+
+    #[tokio::test]
+    async fn test_merge_local_newer_version() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "local").await.unwrap();
+        // Bump local version
+        service.update_entry("key1", "local-updated").await.unwrap();
+        let remote = vec![
+            SharedMemoryEntry {
+                key: "key1".to_string(),
+                value: "remote".to_string(),
+                author: "agent-2".to_string(),
+                timestamp: chrono::Utc::now(),
+                version: 1,
+            },
+        ];
+        let _ = service.merge_entries(remote).await;
+        let entry = service.get_entry("key1").await.unwrap();
+        assert_eq!(entry.value, "local-updated");
+    }
+
+    #[tokio::test]
+    async fn test_clear() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        service.clear().await;
+        assert_eq!(service.entry_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_pending_and_conflict_entries() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        let pending = service.get_pending_entries().await;
+        assert_eq!(pending.len(), 1);
+        let conflicts = service.get_conflict_entries().await;
+        assert!(conflicts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_sync_status() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        service.add_entry("key1", "value1").await.unwrap();
+        let status = service.get_sync_status().await;
+        assert!(status.contains_key("key1"));
+        assert_eq!(status["key1"], SyncStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_save_to_file_no_path() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        let result = service.save_to_file().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_from_file_no_path() {
+        let service = TeamMemorySyncService::new("test-team", "agent-1");
+        let result = service.load_from_file().await;
+        assert!(result.is_err());
+    }
+}

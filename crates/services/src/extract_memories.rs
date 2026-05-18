@@ -419,3 +419,121 @@ impl ExtractMemoriesService {
         Ok(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_category_display() {
+        assert_eq!(MemoryCategory::ProjectStructure.to_string(), "Project Structure");
+        assert_eq!(MemoryCategory::BuildCommands.to_string(), "Build Commands");
+        assert_eq!(MemoryCategory::Conventions.to_string(), "Conventions");
+        assert_eq!(MemoryCategory::Dependencies.to_string(), "Dependencies");
+        assert_eq!(MemoryCategory::Deployment.to_string(), "Deployment");
+        assert_eq!(MemoryCategory::General.to_string(), "General");
+    }
+
+    #[test]
+    fn test_categorize_heading_build() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Build and Test Commands"),
+            MemoryCategory::BuildCommands
+        );
+    }
+
+    #[test]
+    fn test_categorize_heading_conventions() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Coding Conventions"),
+            MemoryCategory::Conventions
+        );
+    }
+
+    #[test]
+    fn test_categorize_heading_dependencies() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Dependencies"),
+            MemoryCategory::Dependencies
+        );
+    }
+
+    #[test]
+    fn test_categorize_heading_deployment() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Deployment"),
+            MemoryCategory::Deployment
+        );
+    }
+
+    #[test]
+    fn test_categorize_heading_structure() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Project Structure"),
+            MemoryCategory::ProjectStructure
+        );
+    }
+
+    #[test]
+    fn test_categorize_heading_general() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        assert_eq!(
+            service.categorize_heading("# Introduction"),
+            MemoryCategory::General
+        );
+    }
+
+    #[test]
+    fn test_extract_from_text_remember() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        let memories = service.extract_from_text("Remember: always use cargo test", "user message");
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].category, MemoryCategory::General);
+        assert!(memories[0].content.contains("Remember:"));
+    }
+
+    #[test]
+    fn test_extract_from_text_build_command() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        let memories = service.extract_from_text("To build: run cargo build --release", "user message");
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].category, MemoryCategory::BuildCommands);
+    }
+
+    #[test]
+    fn test_generate_claude_md() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp"));
+        let memories = vec![
+            MemoryEntry {
+                content: "This is a test project".to_string(),
+                category: MemoryCategory::General,
+                source: "test".to_string(),
+                confidence: 0.8,
+            },
+            MemoryEntry {
+                content: "Use cargo test".to_string(),
+                category: MemoryCategory::BuildCommands,
+                source: "test".to_string(),
+                confidence: 0.9,
+            },
+        ];
+        let output = service.generate_claude_md(&memories);
+        assert!(output.contains("# Project Context"));
+        assert!(output.contains("## General"));
+        assert!(output.contains("## Build Commands"));
+        assert!(output.contains("This is a test project"));
+        assert!(output.contains("Use cargo test"));
+    }
+
+    #[test]
+    fn test_extract_from_project_no_files() {
+        let service = ExtractMemoriesService::new(PathBuf::from("/tmp/nonexistent"));
+        let memories = service.extract_from_project();
+        assert!(memories.is_empty());
+    }
+}
