@@ -3133,6 +3133,188 @@ pub async fn kill_teammate_pane(pane_id: &str, backend: &SpawnBackend) -> anyhow
 }
 
 // =========================================================================
+// Handoff Classification + Agent Memory (Phase 10.3g)
+// =========================================================================
+
+/// Result of handoff quality assessment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandoffAssessment {
+    /// Whether the agent result is complete.
+    pub is_complete: bool,
+    /// Quality score (0.0 - 1.0).
+    pub quality_score: f64,
+    /// Warning message if quality is poor.
+    pub warning: Option<String>,
+    /// Suggested follow-up if incomplete.
+    pub suggested_follow_up: Option<String>,
+}
+
+/// Assess handoff quality of an agent's transcript.
+/// Uses secondary model call for classification.
+pub fn assess_handoff_quality(
+    transcript: &str,
+    original_prompt: &str,
+    tool_use_count: usize,
+) -> HandoffAssessment {
+    // Simple heuristic-based assessment (full impl would use secondary model call)
+
+    let is_empty = transcript.trim().is_empty();
+    let has_error = transcript.contains("Error:") || transcript.contains("error:");
+    let is_truncated = transcript.ends_with("...");
+    let has_tool_use = tool_use_count > 0;
+
+    // Calculate quality score
+    let mut quality_score: f64 = 1.0;
+
+    if is_empty {
+        quality_score -= 0.5;
+    }
+    if has_error {
+        quality_score -= 0.3;
+    }
+    if is_truncated {
+        quality_score -= 0.2;
+    }
+    if !has_tool_use && !is_empty {
+        // No tools used but produced output — might be just thinking
+        quality_score -= 0.1;
+    }
+
+    quality_score = quality_score.max(0.0_f64);
+
+    // Generate warning if quality is poor
+    let warning = if quality_score < 0.5 {
+        Some(format!(
+            "Agent result quality is low (score: {quality_score:.2}). \
+            The agent may not have completed the task fully. \
+            Consider reviewing the transcript or asking the agent to continue."
+        ))
+    } else {
+        None
+    };
+
+    // Suggest follow-up if incomplete
+    let suggested_follow_up = if is_empty || is_truncated {
+        Some("Continue with the task where you left off. Provide the complete result.".to_string())
+    } else {
+        None
+    };
+
+    HandoffAssessment {
+        is_complete: !is_empty && !is_truncated && !has_error,
+        quality_score,
+        warning,
+        suggested_follow_up,
+    }
+}
+
+/// Agent memory snapshot loaded from scope-based files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentMemorySnapshot {
+    /// Memory content loaded into agent's system prompt.
+    pub content: String,
+    /// Scope of the memory (project, user, team).
+    pub scope: String,
+    /// Source file path.
+    pub source_path: String,
+    /// Last modified timestamp.
+    pub last_modified: chrono::DateTime<chrono::Utc>,
+}
+
+/// Load agent memory snapshot for a given agent type.
+/// Scopes: project (.claude/memory/), user (~/.claude/memory/), team (.claude/teams/).
+pub fn get_agent_memory_snapshot(agent_type: &str) -> Option<AgentMemorySnapshot> {
+    // Try project scope first
+    let project_path = format!(".claude/memory/{agent_type}.md");
+    if let Ok(snapshot) = load_memory_file(&project_path, "project") {
+        return Some(snapshot);
+    }
+
+    // Try user scope
+    if let Some(config_dir) = dirs::config_dir() {
+        let user_path = config_dir.join("claude").join("memory").join(format!("{agent_type}.md"));
+        if let Ok(snapshot) = load_memory_file(user_path.to_str()?, "user") {
+            return Some(snapshot);
+        }
+    }
+
+    // Try team scope
+    let team_path = format!(".claude/teams/memory-{agent_type}.md");
+    if let Ok(snapshot) = load_memory_file(&team_path, "team") {
+        return Some(snapshot);
+    }
+
+    None
+}
+
+/// Load a memory file into a snapshot.
+fn load_memory_file(path: &str, scope: &str) -> anyhow::Result<AgentMemorySnapshot> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| anyhow::anyhow!("Memory file not found: {e}"))?;
+
+    let last_modified = metadata
+        .modified()
+        .map(|t| t.into())
+        .unwrap_or_else(|_| chrono::Utc::now());
+
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read memory file: {e}"))?;
+
+    Ok(AgentMemorySnapshot {
+        content,
+        scope: scope.to_string(),
+        source_path: path.to_string(),
+        last_modified,
+    })
+}
+
+/// Agent progress summary for display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProgressSummary {
+    pub agent_id: String,
+    pub agent_type: String,
+    pub description: String,
+    pub status: String,
+    pub tool_uses: usize,
+    pub tokens: u64,
+    pub duration_ms: u64,
+    pub activity_description: String,
+}
+
+/// Format agent progress summary for notification display.
+pub fn format_progress_notification(summary: &AgentProgressSummary) -> String {
+    let status_emoji = match summary.status.as_str() {
+        "completed" => "✓",
+        "error" => "✗",
+        "aborted" => "⊘",
+        _ => "⟳",
+    };
+
+    format!(
+        "{status_emoji} {agent_type}: {description}\n\
+        Tools: {tool_uses} | Tokens: {tokens} | Duration: {duration:.1}s\n\
+        {activity}",
+        status_emoji = status_emoji,
+        agent_type = summary.agent_type,
+        description = summary.description,
+        tool_uses = summary.tool_uses,
+        tokens = summary.tokens,
+        duration = summary.duration_ms as f64 / 1000.0,
+        activity = summary.activity_description,
+    )
+}
+
+/// Check if SDK agent progress summaries are enabled.
+/// In full impl, this would check GrowthBook gate.
+pub fn get_sdk_agent_progress_summaries_enabled() -> bool {
+    // Check env var as fallback for GrowthBook gate
+    std::env::var("CLAUDE_CODE_AGENT_PROGRESS_SUMMARIES")
+        .ok()
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+// =========================================================================
 // Helper Functions
 // =========================================================================
 
