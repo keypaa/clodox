@@ -65,7 +65,7 @@ impl ReplScreen {
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(10),
+                Constraint::Length(14),
                 Constraint::Min(3),
                 Constraint::Length(1),
                 Constraint::Length(4),
