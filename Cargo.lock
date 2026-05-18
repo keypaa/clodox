@@ -204,6 +204,7 @@ dependencies = [
  "cc-query",
  "cc-services",
  "cc-tools",
+ "chrono",
  "clap",
  "crossterm",
  "dirs",

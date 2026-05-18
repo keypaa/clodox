@@ -1,5 +1,6 @@
 mod cli_args;
 mod logging;
+mod session;
 
 use clap::Parser;
 use cli_args::{Cli, Commands};
@@ -179,6 +180,10 @@ async fn handle_print_mode(cli: &Cli) -> anyhow::Result<()> {
 
     tracing::info!("Non-interactive mode, prompt length: {} chars", prompt.len());
 
+    // Create session (unless --no-session-persistence, which we'll add later)
+    let mut session = session::Session::new(cli)?;
+    tracing::info!("Session ID: {}", session.id);
+
     // TODO: Initialize QueryEngine and run query loop
     // For now, print a placeholder
     match cli.output_format {
@@ -197,6 +202,9 @@ async fn handle_print_mode(cli: &Cli) -> anyhow::Result<()> {
         }
     }
 
+    // End session
+    session.end("end_turn")?;
+
     Ok(())
 }
 
@@ -204,9 +212,46 @@ async fn handle_print_mode(cli: &Cli) -> anyhow::Result<()> {
 async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     tracing::info!("Interactive mode");
 
-    // TODO: Initialize session, load tools, launch TUI
+    // Initialize or resume session
+    let session = if cli.r#continue {
+        // Continue most recent conversation
+        if let Some(s) = session::Session::find_most_recent()? {
+            tracing::info!("Continuing session: {}", s.id);
+            s
+        } else {
+            tracing::info!("No previous session found, creating new");
+            session::Session::new(cli)?
+        }
+    } else if let Some(ref resume_id) = cli.resume {
+        // Resume specific session
+        if resume_id.is_empty() {
+            // Open picker (not yet implemented)
+            tracing::info!("Resume picker not yet implemented, creating new session");
+            session::Session::new(cli)?
+        } else {
+            tracing::info!("Resuming session: {}", resume_id);
+            session::Session::load(resume_id)?
+        }
+    } else {
+        // New session
+        session::Session::new(cli)?
+    };
+
+    tracing::info!("Session ID: {}", session.id);
+
+    // Load previous messages if resuming
+    if cli.r#continue || cli.resume.is_some() {
+        let messages = session.read_messages()?;
+        tracing::info!("Loaded {} previous messages", messages.len());
+    }
+
+    // Set up graceful shutdown
+    let shutdown = session::GracefulShutdown::new();
+
+    // TODO: Initialize tools, load settings, launch TUI
     // For now, print a placeholder
     println!("Claude Code (Rust port) — Interactive Mode");
+    println!("Session: {}", session.id);
     println!("(TUI not yet implemented)");
     println!();
 
@@ -215,6 +260,13 @@ async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     }
 
     println!("Type /help for available commands, or enter a prompt.");
+    println!("Press Ctrl+C to exit.");
+
+    // Wait for shutdown signal
+    shutdown.wait_for_signal().await?;
+
+    // Graceful shutdown
+    tracing::info!("Shutting down session: {}", session.id);
 
     Ok(())
 }
