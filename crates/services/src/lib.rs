@@ -1,0 +1,10 @@
+pub mod api;
+pub mod mcp;
+pub mod compact;
+pub mod analytics;
+pub mod plugins;
+pub mod lsp;
+pub mod token_estimation;
+pub mod team_memory_sync;
+pub mod extract_memories;
+pub mod prompt_suggestion;

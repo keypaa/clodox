@@ -1,0 +1,10 @@
+pub mod bash;
+pub mod file_read;
+pub mod file_write;
+pub mod file_edit;
+pub mod grep;
+pub mod glob;
+pub mod web_search;
+pub mod web_fetch;
+pub mod agent;
+pub mod registry;

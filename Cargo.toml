@@ -1,0 +1,67 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/query",
+    "crates/tools",
+    "crates/commands",
+    "crates/services",
+    "crates/bridge",
+    "crates/cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (rustls for no-openssl build)
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Schema validation
+schemars = "0.8"
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Paths/dirs
+dirs = "5"
+
+# Collections
+indexmap = { version = "2", features = ["serde"] }
+
+# Internal
+cc-core = { path = "crates/core" }
+cc-query = { path = "crates/query" }
+cc-tools = { path = "crates/tools" }
+cc-commands = { path = "crates/commands" }
+cc-services = { path = "crates/services" }
+cc-bridge = { path = "crates/bridge" }

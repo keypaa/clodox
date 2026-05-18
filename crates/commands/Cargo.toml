@@ -1,0 +1,14 @@
+[package]
+name = "cc-commands"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cc-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
