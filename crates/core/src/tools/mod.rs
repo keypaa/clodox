@@ -98,6 +98,25 @@ pub struct ToolUseContext {
     pub rendered_system_prompt: Option<String>,
 }
 
+/// Trait for calling MCP tools from within other tools.
+/// Implemented by McpService in cc-services.
+#[async_trait]
+pub trait McpToolCaller: Send + Sync {
+    /// Call a tool on a remote MCP server.
+    async fn call_mcp_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String>;
+
+    /// Get tools from a specific remote MCP server.
+    async fn get_remote_tools(
+        &self,
+        server_name: &str,
+    ) -> Vec<(String, String, String, serde_json::Value)>;
+}
+
 #[derive(Clone)]
 pub struct ToolUseOptions {
     pub commands: Vec<crate::commands::Command>,
@@ -115,6 +134,7 @@ pub struct ToolUseOptions {
     pub append_system_prompt: Option<String>,
     pub query_source: Option<QuerySource>,
     pub refresh_tools: Option<Arc<dyn Fn() -> Tools + Send + Sync>>,
+    pub mcp_service: Option<Arc<dyn McpToolCaller>>,
 }
 
 #[derive(Debug, Clone)]

@@ -916,3 +916,27 @@ fn extract_tool_result_json(result: &CallToolResult) -> serde_json::Value {
         serde_json::json!({ "content": content_text })
     }
 }
+
+/// Implement the McpToolCaller trait from cc-core.
+#[async_trait::async_trait]
+impl cc_core::tools::McpToolCaller for McpService {
+    async fn call_mcp_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        self.call_remote_tool(server_name, tool_name, arguments).await
+    }
+
+    async fn get_remote_tools(
+        &self,
+        server_name: &str,
+    ) -> Vec<(String, String, String, serde_json::Value)> {
+        self.get_remote_server_tools(server_name)
+            .await
+            .into_iter()
+            .map(|t| (t.server_name, t.tool_name, t.description, t.input_schema))
+            .collect()
+    }
+}

@@ -105,6 +105,7 @@ impl StreamingToolExecutor {
                 append_system_prompt: None,
                 query_source: None,
                 refresh_tools: None,
+                mcp_service: None,
             },
             abort_controller: abort_tx,
             messages: Vec::new(),
