@@ -2,14 +2,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use cc_query::api_client::ApiConfig;
+use cc_query::api_types::SystemPromptBlock;
+use cc_query::engine::{QueryConfig, QueryEngine, QueryEvent, TokenBudget};
+use cc_query::retry::RetryOptions;
 use crate::utils::check_read_permission;
-use cc_core::messages::ContentBlockParam;
+use cc_core::messages::{ContentBlockParam, UserMessage};
 use cc_core::permissions::PermissionResult;
 use cc_core::tools::{
     InterruptBehavior, McpToolCaller, SearchOrReadInfo, Tool, ToolProgress, ToolPromptOptions,
     ToolResult, ToolUseContext,
 };
 use cc_core::types::ValidationResult;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
@@ -235,6 +240,112 @@ impl AgentColorManager {
 }
 
 // =========================================================================
+// Agent Progress Tracking
+// =========================================================================
+
+/// Tracks progress of a running agent.
+struct AgentProgressTracker {
+    description: String,
+    activity_description: String,
+    tool_uses: usize,
+    token_count: u64,
+    current_tool: Option<String>,
+    status: AgentProgressStatus,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum AgentProgressStatus {
+    Running,
+    Completed,
+    Aborted,
+    Error,
+}
+
+impl AgentProgressTracker {
+    fn new(description: String) -> Self {
+        Self {
+            description: description.clone(),
+            activity_description: "Starting...".to_string(),
+            tool_uses: 0,
+            token_count: 0,
+            current_tool: None,
+            status: AgentProgressStatus::Running,
+            error_message: None,
+        }
+    }
+
+    fn update_from_stream(&mut self, event: &cc_core::messages::StreamEvent) {
+        if let cc_core::messages::StreamEvent::ContentBlockDelta { delta, .. } = event {
+            if let cc_core::messages::ContentBlockDelta::TextDelta { text } = delta {
+                // Extract activity description from text (e.g., "Running tests...", "Reading file...")
+                if text.starts_with("Running") || text.starts_with("Reading") || text.starts_with("Writing") || text.starts_with("Searching") {
+                    let line = text.lines().next().unwrap_or(text);
+                    if line.len() <= 80 {
+                        self.activity_description = line.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    fn record_tool_calls(&mut self, tool_calls: &[cc_query::engine::ToolCallInfo]) {
+        self.tool_uses += tool_calls.len();
+        if let Some(first) = tool_calls.first() {
+            self.current_tool = Some(first.name.clone());
+            self.activity_description = format!("Running {}", first.name);
+        }
+    }
+
+    fn record_tool_result(&mut self, tool_name: &str, success: bool) {
+        if self.current_tool.as_deref() == Some(tool_name) {
+            self.current_tool = None;
+        }
+        if !success {
+            self.activity_description = format!("{tool_name} failed");
+        }
+    }
+
+    fn mark_completed(&mut self) {
+        self.status = AgentProgressStatus::Completed;
+        self.activity_description = "Completed".to_string();
+    }
+
+    fn mark_aborted(&mut self) {
+        self.status = AgentProgressStatus::Aborted;
+        self.activity_description = "Aborted".to_string();
+    }
+
+    fn mark_error(&mut self, error: &str) {
+        self.status = AgentProgressStatus::Error;
+        self.error_message = Some(error.to_string());
+        self.activity_description = "Error".to_string();
+    }
+
+    fn to_progress(&self, agent_id: &str) -> ToolProgress {
+        let data = serde_json::json!({
+            "agentId": agent_id,
+            "description": self.description,
+            "activityDescription": self.activity_description,
+            "toolUses": self.tool_uses,
+            "tokenCount": self.token_count,
+            "status": match self.status {
+                AgentProgressStatus::Running => "running",
+                AgentProgressStatus::Completed => "completed",
+                AgentProgressStatus::Aborted => "aborted",
+                AgentProgressStatus::Error => "error",
+            },
+            "currentTool": self.current_tool,
+            "errorMessage": self.error_message,
+        });
+        ToolProgress {
+            tool_use_id: agent_id.to_string(),
+            data,
+        }
+    }
+}
+
+// =========================================================================
 // Agent Tool
 // =========================================================================
 
@@ -406,6 +517,7 @@ impl AgentTool {
         description: &str,
         context: &ToolUseContext,
         model: &str,
+        on_progress: Option<Arc<dyn Fn(ToolProgress) + Send + Sync>>,
     ) -> anyhow::Result<serde_json::Value> {
         let start = std::time::Instant::now();
         let agent_id = uuid::Uuid::new_v4().to_string();
@@ -424,14 +536,161 @@ impl AgentTool {
                 .await;
         }
 
-        // In a full implementation, this would:
-        // 1. Create an isolated QueryEngine instance
-        // 2. Assemble agent-specific system prompt + tool pool
-        // 3. Run the query loop
-        // 4. Collect results, token usage, duration
-        //
-        // For now, return a placeholder result
+        // Build agent-specific tool pool
+        let agent_tools = self.build_agent_tool_pool(agent, context);
+
+        // Build agent-specific system prompt
+        let system_prompt = self.build_agent_system_prompt(agent, prompt, context);
+
+        // Create API config from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+        let api_config = ApiConfig {
+            api_key,
+            base_url: std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| "https://api.anthropic.com".to_string()),
+            ..Default::default()
+        };
+
+        // Create query config
+        let query_config = QueryConfig {
+            model: model.to_string(),
+            max_tokens: 4096,
+            system_prompt,
+            tools: agent_tools,
+            permission_context: cc_core::permissions::ToolPermissionContext::default(),
+            temperature: None,
+            thinking_enabled: context.options.thinking_config.enabled,
+            thinking_budget: context.options.thinking_config.budget_tokens,
+            token_budget: TokenBudget::new(None),
+            api_config,
+            retry_options: RetryOptions {
+                max_retries: 3,
+                model: model.to_string(),
+                fallback_model: None,
+                initial_consecutive_529: 0,
+            },
+            verbose: context.options.verbose,
+            debug: context.options.debug,
+        };
+
+        // Create abort channel for the agent
+        let (abort_tx, abort_rx) = tokio::sync::watch::channel(false);
+
+        // Create isolated QueryEngine
+        let mut query_engine = QueryEngine::new(query_config, abort_rx)
+            .map_err(|e| anyhow::anyhow!("Failed to create QueryEngine: {e}"))?;
+
+        // Create user message from prompt
+        let user_msg = UserMessage {
+            id: uuid::Uuid::new_v4(),
+            content: vec![ContentBlockParam::Text {
+                text: prompt.to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+            is_meta: None,
+            origin_query_source: None,
+            effort: None,
+        };
+
+        // Run the query loop and collect events
+        let mut event_stream = std::pin::pin!(query_engine.submit_message(user_msg).await);
+        let mut all_messages = Vec::new();
+        let mut total_tool_use_count = 0;
+        let mut total_input_tokens = 0u64;
+        let mut total_output_tokens = 0u64;
+        let mut final_content = String::new();
+        let mut progress_tracker = AgentProgressTracker::new(description.to_string());
+
+        // Emit initial progress
+        if let Some(ref cb) = on_progress {
+            cb(progress_tracker.to_progress(&agent_id));
+        }
+
+        while let Some(event_result) = event_stream.next().await {
+            match event_result {
+                Ok(event) => match event {
+                    QueryEvent::Stream(core_event) => {
+                        // Track token usage from stream events
+                        if let cc_core::messages::StreamEvent::MessageDelta { usage, .. } = &core_event {
+                            total_input_tokens += usage.input_tokens;
+                            total_output_tokens += usage.output_tokens;
+                        }
+                        // Update progress from streaming content
+                        progress_tracker.update_from_stream(&core_event);
+                        if let Some(ref cb) = on_progress {
+                            cb(progress_tracker.to_progress(&agent_id));
+                        }
+                    }
+                    QueryEvent::TurnComplete { message } => {
+                        // Collect final text content
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::ToolCallsPending { tool_calls, .. } => {
+                        total_tool_use_count += tool_calls.len();
+                        progress_tracker.record_tool_calls(&tool_calls);
+                        if let Some(ref cb) = on_progress {
+                            cb(progress_tracker.to_progress(&agent_id));
+                        }
+                    }
+                    QueryEvent::ToolResult { tool_name, success, .. } => {
+                        debug!(%tool_name, success, "Agent tool result");
+                        progress_tracker.record_tool_result(&tool_name, success);
+                    }
+                    QueryEvent::MaxTokensReached { message } => {
+                        warn!("Agent hit max tokens limit");
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::Aborted => {
+                        info!("Agent was aborted");
+                        progress_tracker.mark_aborted();
+                        break;
+                    }
+                },
+                Err(e) => {
+                    warn!(error = %e, "Agent query error");
+                    progress_tracker.mark_error(&e.to_string());
+                    break;
+                }
+            }
+        }
+
         let duration_ms = start.elapsed().as_millis() as u64;
+        let total_tokens = total_input_tokens + total_output_tokens;
+
+        // Write transcript to file
+        let transcript_path = self.write_agent_transcript(
+            &agent_id,
+            agent,
+            prompt,
+            description,
+            &all_messages,
+            total_tool_use_count,
+            total_tokens,
+            duration_ms,
+        );
+
+        info!(
+            agent_type = %agent.agent_type,
+            duration_ms,
+            tool_uses = total_tool_use_count,
+            tokens = total_tokens,
+            "Sync agent completed"
+        );
 
         Ok(serde_json::json!({
             "status": "completed",
@@ -440,12 +699,159 @@ impl AgentTool {
             "model": model,
             "prompt": prompt,
             "description": description,
-            "content": format!("[Agent {agent_type} completed task: {description}]", agent_type = agent.agent_type),
-            "totalToolUseCount": 0,
+            "content": final_content,
+            "totalToolUseCount": total_tool_use_count,
             "totalDurationMs": duration_ms,
-            "totalTokens": 0,
-            "output_file": format!(".claude/agents/{agent_id}/transcript.json"),
+            "totalTokens": total_tokens,
+            "output_file": transcript_path,
         }))
+    }
+
+    /// Build a filtered tool pool for the agent based on its allowlist/denylist.
+    fn build_agent_tool_pool(
+        &self,
+        agent: &FullAgentDefinition,
+        context: &ToolUseContext,
+    ) -> cc_core::tools::Tools {
+        let all_tools = &context.options.tools;
+
+        // Filter by allowlist (if specified)
+        let filtered: Vec<Arc<dyn cc_core::tools::Tool>> = if let Some(ref allowed) = agent.tools {
+            all_tools
+                .iter()
+                .filter(|t| allowed.contains(&t.name().to_string()) || allowed.contains(&t.name().to_lowercase()))
+                .cloned()
+                .collect()
+        } else {
+            all_tools.iter().cloned().collect()
+        };
+
+        // Apply denylist
+        if let Some(ref denied) = agent.disallowed_tools {
+            Arc::new(
+                filtered
+                    .into_iter()
+                    .filter(|t| !denied.contains(&t.name().to_string()) && !denied.contains(&t.name().to_lowercase()))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            Arc::new(filtered)
+        }
+    }
+
+    /// Build agent-specific system prompt.
+    fn build_agent_system_prompt(
+        &self,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        context: &ToolUseContext,
+    ) -> Vec<SystemPromptBlock> {
+        let mut parts = Vec::new();
+
+        // Agent's own instructions/system prompt
+        let agent_instructions = agent.get_system_prompt();
+        if !agent_instructions.is_empty() {
+            parts.push(SystemPromptBlock::Text {
+                text: agent_instructions,
+                cache_control: None,
+            });
+        }
+
+        // Base instructions for subagents
+        let base_instructions = format!(
+            "You are a specialized subagent (type: {agent_type}) executing a task delegated by the main assistant.\n\
+            Task description: {description}\n\n\
+            Follow the instructions below carefully. Use available tools when needed.\n\
+            When you have completed the task, provide a clear and concise result.",
+            agent_type = agent.agent_type,
+            description = agent.when_to_use,
+        );
+        parts.push(SystemPromptBlock::Text {
+            text: base_instructions,
+            cache_control: None,
+        });
+
+        // Environment context
+        let cwd = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let env_context = format!(
+            "Working directory: {cwd}\n\
+            OS: {}\n\
+            Architecture: {}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+        );
+        parts.push(SystemPromptBlock::Text {
+            text: env_context,
+            cache_control: None,
+        });
+
+        // Inherit parent's custom system prompt if present
+        if let Some(ref parent_prompt) = context.options.custom_system_prompt {
+            parts.push(SystemPromptBlock::Text {
+                text: parent_prompt.clone(),
+                cache_control: None,
+            });
+        }
+
+        parts
+    }
+
+    /// Write agent transcript to .claude/agents/<agent-id>/transcript.json
+    fn write_agent_transcript(
+        &self,
+        agent_id: &str,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        messages: &[cc_core::messages::AssistantMessage],
+        tool_use_count: usize,
+        total_tokens: u64,
+        duration_ms: u64,
+    ) -> String {
+        let transcript_path = format!(".claude/agents/{agent_id}/transcript.json");
+        let dir = std::path::Path::new(&transcript_path)
+            .parent()
+            .unwrap_or(std::path::Path::new(".claude/agents"));
+
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            warn!(error = %e, path = ?dir, "Failed to create agent transcript directory");
+            return transcript_path;
+        }
+
+        let transcript = serde_json::json!({
+            "agentId": agent_id,
+            "agentType": agent.agent_type,
+            "name": agent.name,
+            "model": "unknown", // Would be resolved in full impl
+            "prompt": prompt,
+            "description": description,
+            "startTime": chrono::Utc::now().to_rfc3339(),
+            "durationMs": duration_ms,
+            "totalToolUseCount": tool_use_count,
+            "totalTokens": total_tokens,
+            "messages": messages.iter().map(|m| {
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": m.content.iter().map(|c| {
+                        match c {
+                            ContentBlockParam::Text { text } => serde_json::json!({"type": "text", "text": text}),
+                            ContentBlockParam::ToolUse { id, name, input } => serde_json::json!({"type": "tool_use", "id": id, "name": name, "input": input}),
+                            ContentBlockParam::Thinking { thinking, signature } => serde_json::json!({"type": "thinking", "thinking": thinking}),
+                            _ => serde_json::json!({"type": "unknown"}),
+                        }
+                    }).collect::<Vec<_>>(),
+                })
+            }).collect::<Vec<_>>(),
+        });
+
+        if let Err(e) = std::fs::write(&transcript_path, serde_json::to_string_pretty(&transcript).unwrap_or_default()) {
+            warn!(error = %e, path = %transcript_path, "Failed to write agent transcript");
+        }
+
+        transcript_path
     }
 
     /// Run an async agent in the background.
@@ -517,7 +923,7 @@ impl Tool for AgentTool {
         &self,
         input: serde_json::Value,
         context: &ToolUseContext,
-        _on_progress: Option<Arc<dyn Fn(ToolProgress) + Send + Sync>>,
+        on_progress: Option<Arc<dyn Fn(ToolProgress) + Send + Sync>>,
     ) -> anyhow::Result<ToolResult<serde_json::Value>> {
         let prompt = input["prompt"]
             .as_str()
@@ -610,7 +1016,7 @@ impl Tool for AgentTool {
             self.run_async_agent(selected_agent, prompt, description, context, &model)
                 .await?
         } else {
-            self.run_sync_agent(selected_agent, prompt, description, context, &model)
+            self.run_sync_agent(selected_agent, prompt, description, context, &model, on_progress)
                 .await?
         };
 
