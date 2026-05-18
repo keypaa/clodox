@@ -29,6 +29,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 **Problem**: After flattening `PermissionResult`, code in `tools/mod.rs` still referenced `PermissionResult::Decision(PermissionDecision::Allow { ... })`.
 **Fix**: Changed to direct `PermissionResult::Allow { ... }`.
 
+### 6. AgentDefinition Type Conflict (2026-05-18)
+**Problem**: `cc_core::tools::AgentDefinition` (minimal: name, description, agent_type) conflicted with local `AgentDefinition` in `agent.rs` (rich: model, tools, permissions, MCP requirements, etc.). Rust doesn't allow same-name types in scope.
+**Fix**: Renamed local type to `FullAgentDefinition`. Added conversion from `cc_core::tools::AgentDefinition` → `FullAgentDefinition` in `get_active_agents()` and `prompt()` methods.
+
 ---
 
 ## Architecture Decisions
@@ -175,6 +179,14 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 - Screen navigation (Escape navigates between screens)
 - Token/cost display (footer pills, adaptive formatting)
 
+### Phase 10: MCP Protocol & Advanced Tools ✅ (5/5 sub-phases)
+- 10.0: MCP Protocol via `rmcp` crate — stdio + HTTP/SSE transports, Exa MCP integration
+- 10.1: `web_fetch` tool — URL validation, HTML→markdown, 130+ preapproved hosts, LRU cache
+- 10.2: `web_search` tool — Exa MCP search, domain filtering, result parsing
+- 10.3: `agent` tool — definition system, built-in agents, color management, sync/async execution
+- 10.4: Registry update — register all new tools, `AgentColorManager` shared instance
+- 10.5: Final compilation verification — clean `cargo check` across all crates
+
 ---
 
 ## Remaining Work
@@ -202,9 +214,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 - Migrations (config version migration deferred)
 
 ### Missing Tools (Not Implemented)
-- `web_fetch`
-- `web_search`
-- `agent` (subagent tool)
+- (all core tools implemented — advanced agent features deferred)
 
 ---
 
