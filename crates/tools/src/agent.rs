@@ -2509,6 +2509,236 @@ async fn run_with_cwd_override<T, F: std::future::Future<Output = T>>(cwd: &str,
 }
 
 // =========================================================================
+// Fork Subagent (Phase 10.3e)
+// =========================================================================
+
+/// Context for a fork subagent, inherited from parent.
+#[derive(Debug, Clone)]
+pub struct ForkContext {
+    /// Parent's full conversation messages (assistant messages with tool_use blocks).
+    pub parent_messages: Vec<cc_core::messages::Message>,
+    /// Parent's rendered system prompt (cache-identical).
+    pub parent_system_prompt: String,
+    /// Parent's exact tool array (cache-identical prefix).
+    pub parent_tools: cc_core::tools::Tools,
+    /// Parent's working directory.
+    pub parent_cwd: String,
+    /// Parent's thinking config (inherited).
+    pub thinking_config: cc_core::tools::ThinkingConfig,
+    /// Whether this is a non-interactive session.
+    pub is_non_interactive: bool,
+}
+
+/// Result of building forked messages.
+pub struct ForkedMessages {
+    /// Messages to send to the fork agent.
+    pub messages: Vec<cc_core::messages::Message>,
+    /// Fork directive appended to the prompt.
+    pub fork_directive: String,
+}
+
+/// Check if the current context is already inside a fork (fork guard).
+/// Prevents recursive fork in children.
+pub fn is_inside_fork(context: &ToolUseContext) -> bool {
+    // Check query_source for agent marker
+    if context.options.query_source.is_some() {
+        // If we're already running as an agent, check if it's a fork agent
+        // by looking at the messages for fork markers
+    }
+
+    // Scan messages for fork child marker
+    for msg in &context.messages {
+        if let cc_core::messages::Message::User(u) = msg {
+            for block in &u.content {
+                if let ContentBlockParam::Text { text } = block {
+                    if text.contains("[FORK_CHILD_MARKER]") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Build forked messages from parent context.
+/// Fork inherits parent's FULL conversation context:
+/// - Clone parent's assistant messages as user messages
+/// - Add placeholder tool_results for each tool_use block
+/// - Append fork directive + user prompt
+pub fn build_forked_messages(
+    fork_context: &ForkContext,
+    user_prompt: &str,
+) -> ForkedMessages {
+    let mut messages = Vec::new();
+    let mut tool_use_counter = 0;
+
+    for msg in &fork_context.parent_messages {
+        match msg {
+            cc_core::messages::Message::Assistant(assistant) => {
+                // Clone assistant message as user message
+                let mut user_content = Vec::new();
+
+                for block in &assistant.content {
+                    match block {
+                        ContentBlockParam::Text { text } => {
+                            user_content.push(ContentBlockParam::Text {
+                                text: text.clone(),
+                            });
+                        }
+                        ContentBlockParam::ToolUse { id, name, input } => {
+                            // Add placeholder tool_result for each tool_use
+                            tool_use_counter += 1;
+                            user_content.push(ContentBlockParam::ToolResult {
+                                tool_use_id: format!("fork-placeholder-{tool_use_counter}"),
+                                content: vec![cc_core::messages::ToolResultContent::Text {
+                                    text: format!(
+                                        "[Result of {name} call — fork inherits this context]"
+                                    ),
+                                }],
+                                is_error: Some(false),
+                            });
+                        }
+                        ContentBlockParam::Thinking { thinking, .. } => {
+                            user_content.push(ContentBlockParam::Text {
+                                text: format!("[Thinking: {thinking}]"),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !user_content.is_empty() {
+                    messages.push(cc_core::messages::Message::User(
+                        cc_core::messages::UserMessage {
+                            id: uuid::Uuid::new_v4(),
+                            content: user_content,
+                            timestamp: assistant.timestamp,
+                            is_meta: None,
+                            origin_query_source: None,
+                            effort: None,
+                        },
+                    ));
+                }
+            }
+            cc_core::messages::Message::User(user) => {
+                // Skip the original user message (we'll add our own with fork directive)
+                // But keep attachment/system messages
+                messages.push(msg.clone());
+            }
+            _ => {
+                messages.push(msg.clone());
+            }
+        }
+    }
+
+    // Build fork directive
+    let fork_directive = format!(
+        "[FORK_CHILD_MARKER]\n\n\
+        === FORK DIRECTIVE ===\n\
+        You are a forked subagent. The conversation context above has been inherited \
+        from the parent agent's full session. You have access to all previous tool \
+        calls and their results.\n\n\
+        Your task is: {prompt}\n\n\
+        IMPORTANT:\n\
+        - Do NOT re-explain background already covered in the inherited context.\n\
+        - Be specific about scope: what's in, what's out, what another agent is handling.\n\
+        - You have the same tools as the parent agent (cache-identical tool array).\n\
+        - Parent working directory was: {cwd}\n\
+        =====================",
+        prompt = user_prompt,
+        cwd = fork_context.parent_cwd,
+    );
+
+    // Add the fork directive as the final user message
+    messages.push(cc_core::messages::Message::User(
+        cc_core::messages::UserMessage {
+            id: uuid::Uuid::new_v4(),
+            content: vec![ContentBlockParam::Text {
+                text: fork_directive.clone(),
+            }],
+            timestamp: chrono::Utc::now(),
+            is_meta: None,
+            origin_query_source: None,
+            effort: None,
+        },
+    ));
+
+    ForkedMessages {
+        messages,
+        fork_directive,
+    }
+}
+
+/// Extract assistant messages with tool_use blocks from context for fork inheritance.
+pub fn extract_fork_context_messages(context: &ToolUseContext) -> Vec<cc_core::messages::Message> {
+    context
+        .messages
+        .iter()
+        .filter(|msg| matches!(msg, cc_core::messages::Message::Assistant(_)))
+        .cloned()
+        .collect()
+}
+
+/// Build a ForkContext from the current ToolUseContext.
+pub fn build_fork_context(context: &ToolUseContext) -> ForkContext {
+    let parent_messages = extract_fork_context_messages(context);
+
+    // Build parent system prompt string from components
+    let mut prompt_parts = Vec::new();
+    if let Some(ref custom) = context.options.custom_system_prompt {
+        prompt_parts.push(custom.clone());
+    }
+    if let Some(ref append) = context.options.append_system_prompt {
+        prompt_parts.push(append.clone());
+    }
+    let parent_system_prompt = prompt_parts.join("\n\n");
+
+    ForkContext {
+        parent_messages,
+        parent_system_prompt,
+        parent_tools: context.options.tools.clone(),
+        parent_cwd: std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+        thinking_config: context.options.thinking_config.clone(),
+        is_non_interactive: context.options.is_non_interactive_session,
+    }
+}
+
+/// Create an error response for fork guard violation.
+pub fn fork_guard_error() -> anyhow::Result<serde_json::Value> {
+    Err(anyhow::anyhow!(
+        "Fork is not available inside a forked worker. \
+        Recursive forking is not allowed to prevent infinite delegation chains."
+    ))
+}
+
+/// Format fork examples for the tool prompt (port from TS).
+fn format_fork_examples() -> String {
+    r#"
+<fork_examples>
+Example 1 — Ship audit:
+user: "Audit the changes in this PR and make sure everything looks good"
+assistant: Uses the Agent tool with subagent_type "fork" to delegate the audit
+  prompt: "Review all changes since the last commit. Check for: consistency, edge cases, missing tests."
+
+Example 2 — Mid-wait status:
+user: "What's the status of the background task?"
+assistant: Uses the Agent tool with subagent_type "fork"
+  prompt: "Check the status of the running task and report back."
+
+Example 3 — Migration review:
+user: "I just migrated from X to Y. Can you review my work?"
+assistant: Uses the Agent tool with subagent_type "fork"
+  prompt: "Review the migration from X to Y. Check for correctness, edge cases, and performance implications."
+</fork_examples>"#
+        .to_string()
+}
+
+// =========================================================================
 // Helper Functions
 // =========================================================================
 
