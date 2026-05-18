@@ -16,7 +16,7 @@ use cc_core::tools::{
 use cc_core::types::ValidationResult;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, watch};
 use tracing::{debug, info, warn};
 
 // =========================================================================
@@ -240,6 +240,105 @@ impl AgentColorManager {
 }
 
 // =========================================================================
+// Async Agent State
+// =========================================================================
+
+/// Status of a running async agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AsyncAgentStatus {
+    Running,
+    Completed,
+    Aborted,
+    Killed,
+    Error,
+}
+
+/// State of a running async agent.
+pub struct AsyncAgentState {
+    pub agent_id: String,
+    pub agent_type: String,
+    pub description: String,
+    pub prompt: String,
+    pub model: String,
+    pub status: AsyncAgentStatus,
+    pub output_file: String,
+    pub abort_tx: watch::Sender<bool>,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub summary: Option<String>,
+}
+
+/// Global registry for running async agents.
+pub struct AsyncAgentRegistry {
+    agents: RwLock<HashMap<String, Arc<AsyncAgentState>>>,
+}
+
+impl std::fmt::Debug for AsyncAgentRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsyncAgentRegistry").finish_non_exhaustive()
+    }
+}
+
+impl AsyncAgentRegistry {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            agents: RwLock::new(HashMap::new()),
+        })
+    }
+
+    /// Register a new async agent.
+    pub async fn register(&self, state: AsyncAgentState) {
+        let mut agents = self.agents.write().await;
+        agents.insert(state.agent_id.clone(), Arc::new(state));
+    }
+
+    /// Get an agent by ID.
+    pub async fn get(&self, agent_id: &str) -> Option<Arc<AsyncAgentState>> {
+        let agents = self.agents.read().await;
+        agents.get(agent_id).cloned()
+    }
+
+    /// Kill a running async agent.
+    pub async fn kill(&self, agent_id: &str) -> bool {
+        let agents = self.agents.read().await;
+        if let Some(state) = agents.get(agent_id) {
+            let _ = state.abort_tx.send(true);
+            // Update status to killed
+            drop(agents);
+            self.update_status(agent_id, AsyncAgentStatus::Killed).await;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update agent status.
+    pub async fn update_status(&self, agent_id: &str, status: AsyncAgentStatus) {
+        let mut agents = self.agents.write().await;
+        if let Some(state) = agents.get_mut(agent_id) {
+            if let Some(inner) = Arc::get_mut(state) {
+                inner.status = status;
+            }
+        }
+    }
+
+    /// List all running agents.
+    pub async fn list_running(&self) -> Vec<Arc<AsyncAgentState>> {
+        let agents = self.agents.read().await;
+        agents
+            .values()
+            .filter(|s| s.status == AsyncAgentStatus::Running)
+            .cloned()
+            .collect()
+    }
+
+    /// Remove a completed/failed agent from the registry.
+    pub async fn remove(&self, agent_id: &str) {
+        let mut agents = self.agents.write().await;
+        agents.remove(agent_id);
+    }
+}
+
+// =========================================================================
 // Agent Progress Tracking
 // =========================================================================
 
@@ -353,11 +452,15 @@ impl AgentProgressTracker {
 #[derive(Debug)]
 pub struct AgentTool {
     color_manager: Arc<AgentColorManager>,
+    async_registry: Arc<AsyncAgentRegistry>,
 }
 
 impl AgentTool {
     pub fn new(color_manager: Arc<AgentColorManager>) -> Arc<dyn Tool> {
-        Arc::new(Self { color_manager })
+        Arc::new(Self {
+            color_manager,
+            async_registry: AsyncAgentRegistry::new(),
+        })
     }
 
     /// Get all active agent definitions (built-in + custom).
@@ -881,12 +984,70 @@ impl AgentTool {
                 .await;
         }
 
-        // In a full implementation, this would:
-        // 1. Spawn a detached child process or background tokio task
-        // 2. Write agent config to mailbox file
-        // 3. Return immediately with agent_id and output_file
-        //
-        // For now, return a placeholder
+        // Create independent abort channel (not linked to parent's)
+        let (abort_tx, abort_rx) = watch::channel(false);
+
+        // Write agent metadata before spawning
+        self.write_agent_metadata(&agent_id, agent, prompt, description, model);
+
+        // Clone data for the background task
+        let agent_clone = agent.clone();
+        let prompt_clone = prompt.to_string();
+        let description_clone = description.to_string();
+        let model_clone = model.to_string();
+        let context_options = context.options.clone();
+        let registry_clone = self.async_registry.clone();
+        let color_manager_clone = self.color_manager.clone();
+        let agent_id_clone = agent_id.clone();
+        let output_file_clone = output_file.clone();
+
+        // Spawn the background task
+        tokio::spawn(async move {
+            let result = Self::run_async_agent_loop_with_options(
+                &agent_clone,
+                &prompt_clone,
+                &description_clone,
+                &context_options,
+                &model_clone,
+                abort_rx,
+                &agent_id_clone,
+                &output_file_clone,
+                &registry_clone,
+                &color_manager_clone,
+            )
+            .await;
+
+            match result {
+                Ok(summary) => {
+                    info!(agent_id = %agent_id_clone, "Async agent completed: {summary}");
+                }
+                Err(e) => {
+                    warn!(agent_id = %agent_id_clone, error = %e, "Async agent failed");
+                }
+            }
+        });
+
+        // Register the agent
+        let state = AsyncAgentState {
+            agent_id: agent_id.clone(),
+            agent_type: agent.agent_type.clone(),
+            description: description.to_string(),
+            prompt: prompt.to_string(),
+            model: model.to_string(),
+            status: AsyncAgentStatus::Running,
+            output_file: output_file.clone(),
+            abort_tx,
+            start_time: chrono::Utc::now(),
+            summary: None,
+        };
+        self.async_registry.register(state).await;
+
+        // Emit initial progress (via log since we're in background)
+        info!(
+            agent_id = %agent_id,
+            description = %description,
+            "Async agent launched in background"
+        );
 
         let can_read_output = context.options.tools.iter().any(|t| {
             t.name() == "Read" || t.name() == "Bash"
@@ -900,6 +1061,356 @@ impl AgentTool {
             "outputFile": output_file,
             "canReadOutputFile": can_read_output,
         }))
+    }
+
+    /// The actual async agent loop (runs in background tokio task).
+    async fn run_async_agent_loop_with_options(
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        options: &cc_core::tools::ToolUseOptions,
+        model: &str,
+        abort_rx: watch::Receiver<bool>,
+        agent_id: &str,
+        output_file: &str,
+        registry: &Arc<AsyncAgentRegistry>,
+        color_manager: &Arc<AgentColorManager>,
+    ) -> anyhow::Result<String> {
+        let start = std::time::Instant::now();
+
+        // Build agent-specific tool pool
+        let agent_tools = Self::build_agent_tool_pool_from_options(agent, options);
+
+        // Build agent-specific system prompt
+        let system_prompt = Self::build_agent_system_prompt_from_options(agent, prompt, options);
+
+        // Create API config from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+        let api_config = ApiConfig {
+            api_key,
+            base_url: std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| "https://api.anthropic.com".to_string()),
+            ..Default::default()
+        };
+
+        // Create query config
+        let query_config = QueryConfig {
+            model: model.to_string(),
+            max_tokens: 4096,
+            system_prompt,
+            tools: agent_tools,
+            permission_context: cc_core::permissions::ToolPermissionContext::default(),
+            temperature: None,
+            thinking_enabled: options.thinking_config.enabled,
+            thinking_budget: options.thinking_config.budget_tokens,
+            token_budget: TokenBudget::new(None),
+            api_config,
+            retry_options: RetryOptions {
+                max_retries: 3,
+                model: model.to_string(),
+                fallback_model: None,
+                initial_consecutive_529: 0,
+            },
+            verbose: options.verbose,
+            debug: options.debug,
+        };
+
+        // Create isolated QueryEngine
+        let mut query_engine = QueryEngine::new(query_config, abort_rx)
+            .map_err(|e| anyhow::anyhow!("Failed to create QueryEngine: {e}"))?;
+
+        // Create user message from prompt
+        let user_msg = UserMessage {
+            id: uuid::Uuid::new_v4(),
+            content: vec![ContentBlockParam::Text {
+                text: prompt.to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+            is_meta: None,
+            origin_query_source: None,
+            effort: None,
+        };
+
+        // Run the query loop and collect events
+        let mut event_stream = std::pin::pin!(query_engine.submit_message(user_msg).await);
+        let mut all_messages = Vec::new();
+        let mut total_tool_use_count = 0;
+        let mut total_input_tokens = 0u64;
+        let mut total_output_tokens = 0u64;
+        let mut final_content = String::new();
+        let mut progress_tracker = AgentProgressTracker::new(description.to_string());
+
+        while let Some(event_result) = event_stream.next().await {
+            match event_result {
+                Ok(event) => match event {
+                    QueryEvent::Stream(core_event) => {
+                        if let cc_core::messages::StreamEvent::MessageDelta { usage, .. } = &core_event {
+                            total_input_tokens += usage.input_tokens;
+                            total_output_tokens += usage.output_tokens;
+                        }
+                        progress_tracker.update_from_stream(&core_event);
+                    }
+                    QueryEvent::TurnComplete { message } => {
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::ToolCallsPending { tool_calls, .. } => {
+                        total_tool_use_count += tool_calls.len();
+                        progress_tracker.record_tool_calls(&tool_calls);
+                    }
+                    QueryEvent::ToolResult { tool_name, success, .. } => {
+                        debug!(%tool_name, success, "Async agent tool result");
+                        progress_tracker.record_tool_result(&tool_name, success);
+                    }
+                    QueryEvent::MaxTokensReached { message } => {
+                        warn!("Async agent hit max tokens limit");
+                        for block in &message.content {
+                            if let ContentBlockParam::Text { text } = block {
+                                final_content.push_str(text);
+                            }
+                        }
+                        all_messages.push(message);
+                        progress_tracker.mark_completed();
+                        break;
+                    }
+                    QueryEvent::Aborted => {
+                        info!("Async agent was aborted");
+                        progress_tracker.mark_aborted();
+                        break;
+                    }
+                },
+                Err(e) => {
+                    warn!(error = %e, "Async agent query error");
+                    progress_tracker.mark_error(&e.to_string());
+                    break;
+                }
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let total_tokens = total_input_tokens + total_output_tokens;
+
+        // Write transcript
+        let transcript_path = Self::write_agent_transcript_static(
+            agent_id,
+            agent,
+            prompt,
+            description,
+            &all_messages,
+            total_tool_use_count,
+            total_tokens,
+            duration_ms,
+        );
+
+        // Generate summary for notification
+        let summary = if final_content.is_empty() {
+            "Agent completed with no output".to_string()
+        } else if final_content.len() > 500 {
+            format!("{}...", &final_content[..500])
+        } else {
+            final_content.clone()
+        };
+
+        // Update registry status
+        registry.update_status(agent_id, AsyncAgentStatus::Completed).await;
+
+        info!(
+            agent_type = %agent.agent_type,
+            agent_id = %agent_id,
+            duration_ms,
+            tool_uses = total_tool_use_count,
+            tokens = total_tokens,
+            "Async agent completed"
+        );
+
+        info!(
+            agent_id = %agent_id,
+            description = %description,
+            transcript_path = %transcript_path,
+            "Agent notification: {summary}"
+        );
+
+        Ok(summary)
+    }
+
+    /// Build agent tool pool from ToolUseOptions.
+    fn build_agent_tool_pool_from_options(
+        agent: &FullAgentDefinition,
+        options: &cc_core::tools::ToolUseOptions,
+    ) -> cc_core::tools::Tools {
+        let all_tools = &options.tools;
+
+        let filtered: Vec<Arc<dyn cc_core::tools::Tool>> = if let Some(ref allowed) = agent.tools {
+            all_tools
+                .iter()
+                .filter(|t| allowed.contains(&t.name().to_string()) || allowed.contains(&t.name().to_lowercase()))
+                .cloned()
+                .collect()
+        } else {
+            all_tools.iter().cloned().collect()
+        };
+
+        if let Some(ref denied) = agent.disallowed_tools {
+            Arc::new(
+                filtered
+                    .into_iter()
+                    .filter(|t| !denied.contains(&t.name().to_string()) && !denied.contains(&t.name().to_lowercase()))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            Arc::new(filtered)
+        }
+    }
+
+    /// Build agent system prompt from ToolUseOptions.
+    fn build_agent_system_prompt_from_options(
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        options: &cc_core::tools::ToolUseOptions,
+    ) -> Vec<SystemPromptBlock> {
+        let mut parts = Vec::new();
+
+        let agent_instructions = agent.get_system_prompt();
+        if !agent_instructions.is_empty() {
+            parts.push(SystemPromptBlock::Text {
+                text: agent_instructions,
+                cache_control: None,
+            });
+        }
+
+        let base_instructions = format!(
+            "You are a specialized subagent (type: {agent_type}) executing a task delegated by the main assistant.\n\
+            Task description: {description}\n\n\
+            Follow the instructions below carefully. Use available tools when needed.\n\
+            When you have completed the task, provide a clear and concise result.",
+            agent_type = agent.agent_type,
+            description = agent.when_to_use,
+        );
+        parts.push(SystemPromptBlock::Text {
+            text: base_instructions,
+            cache_control: None,
+        });
+
+        let cwd = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let env_context = format!(
+            "Working directory: {cwd}\n\
+            OS: {}\n\
+            Architecture: {}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+        );
+        parts.push(SystemPromptBlock::Text {
+            text: env_context,
+            cache_control: None,
+        });
+
+        if let Some(ref parent_prompt) = options.custom_system_prompt {
+            parts.push(SystemPromptBlock::Text {
+                text: parent_prompt.clone(),
+                cache_control: None,
+            });
+        }
+
+        parts
+    }
+
+    /// Static version of write_agent_transcript for use in async task.
+    fn write_agent_transcript_static(
+        agent_id: &str,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        messages: &[cc_core::messages::AssistantMessage],
+        tool_use_count: usize,
+        total_tokens: u64,
+        duration_ms: u64,
+    ) -> String {
+        let transcript_path = format!(".claude/agents/{agent_id}/transcript.json");
+        let dir = std::path::Path::new(&transcript_path)
+            .parent()
+            .unwrap_or(std::path::Path::new(".claude/agents"));
+
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            warn!(error = %e, path = ?dir, "Failed to create agent transcript directory");
+            return transcript_path;
+        }
+
+        let transcript = serde_json::json!({
+            "agentId": agent_id,
+            "agentType": agent.agent_type,
+            "name": agent.name,
+            "model": "unknown",
+            "prompt": prompt,
+            "description": description,
+            "startTime": chrono::Utc::now().to_rfc3339(),
+            "durationMs": duration_ms,
+            "totalToolUseCount": tool_use_count,
+            "totalTokens": total_tokens,
+            "messages": messages.iter().map(|m| {
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": m.content.iter().map(|c| {
+                        match c {
+                            ContentBlockParam::Text { text } => serde_json::json!({"type": "text", "text": text}),
+                            ContentBlockParam::ToolUse { id, name, input } => serde_json::json!({"type": "tool_use", "id": id, "name": name, "input": input}),
+                            ContentBlockParam::Thinking { thinking, signature } => serde_json::json!({"type": "thinking", "thinking": thinking}),
+                            _ => serde_json::json!({"type": "unknown"}),
+                        }
+                    }).collect::<Vec<_>>(),
+                })
+            }).collect::<Vec<_>>(),
+        });
+
+        if let Err(e) = std::fs::write(&transcript_path, serde_json::to_string_pretty(&transcript).unwrap_or_default()) {
+            warn!(error = %e, path = %transcript_path, "Failed to write agent transcript");
+        }
+
+        transcript_path
+    }
+
+    /// Write agent metadata file for /resume support.
+    fn write_agent_metadata(
+        &self,
+        agent_id: &str,
+        agent: &FullAgentDefinition,
+        prompt: &str,
+        description: &str,
+        model: &str,
+    ) {
+        let metadata_path = format!(".claude/agents/{agent_id}/metadata.json");
+        let dir = std::path::Path::new(&metadata_path)
+            .parent()
+            .unwrap_or(std::path::Path::new(".claude/agents"));
+
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            warn!(error = %e, path = ?dir, "Failed to create agent metadata directory");
+            return;
+        }
+
+        let metadata = serde_json::json!({
+            "agentId": agent_id,
+            "agentType": agent.agent_type,
+            "name": agent.name,
+            "model": model,
+            "prompt": prompt,
+            "description": description,
+            "startTime": chrono::Utc::now().to_rfc3339(),
+            "status": "running",
+        });
+
+        if let Err(e) = std::fs::write(&metadata_path, serde_json::to_string_pretty(&metadata).unwrap_or_default()) {
+            warn!(error = %e, path = %metadata_path, "Failed to write agent metadata");
+        }
     }
 }
 
@@ -1279,8 +1790,6 @@ fn format_agent_tools(agent: &FullAgentDefinition) -> String {
 
 /// Format the full agent tool prompt.
 fn format_agent_prompt(agent_list_section: &str) -> String {
-    let current_month_year = chrono::Utc::now().format("%B %Y").to_string();
-
     format!(
         r#"Launch a new agent to handle complex, multi-step tasks autonomously.
 
