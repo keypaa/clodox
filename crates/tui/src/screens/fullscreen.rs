@@ -76,7 +76,7 @@ impl FullscreenScreen {
 
     pub fn update(&mut self, state: &AppState) {
         let messages: Vec<RenderMessage> = state.messages.iter()
-            .map(|msg| message_to_render_message(msg))
+            .map(|msg| core_message_to_render_message(msg))
             .collect();
 
         self.virtual_list.update_messages(messages);
@@ -395,67 +395,4 @@ impl FullscreenScreen {
     }
 }
 
-fn message_to_render_message(msg: &cc_core::messages::Message) -> RenderMessage {
-    use cc_core::messages::Message;
-
-    match msg {
-        Message::User(user_msg) => {
-            let text = user_msg.content.iter()
-                .filter_map(|block| match block {
-                    cc_core::messages::ContentBlockParam::Text { text } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            RenderMessage::UserText { text }
-        }
-        Message::Assistant(assistant_msg) => {
-            let text = assistant_msg.content.iter()
-                .filter_map(|block| match block {
-                    cc_core::messages::ContentBlockParam::Text { text } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            if !text.is_empty() {
-                RenderMessage::AssistantText { text }
-            } else {
-                let tool_use = assistant_msg.content.iter()
-                    .find_map(|block| match block {
-                        cc_core::messages::ContentBlockParam::ToolUse { name, input, .. } => {
-                            Some((name.clone(), input.clone()))
-                        }
-                        _ => None,
-                    });
-
-                match tool_use {
-                    Some((name, _input)) => {
-                        RenderMessage::AssistantToolUse {
-                            tool_name: name,
-                            details: None,
-                            status: Some("Running…".to_string()),
-                            is_resolved: false,
-                            is_error: false,
-                            output: None,
-                            is_expanded: false,
-                            duration_ms: None,
-                        }
-                    }
-                    None => RenderMessage::AssistantText { text: String::new() },
-                }
-            }
-        }
-        Message::System(system_msg) => {
-            let text = match system_msg {
-                cc_core::messages::SystemMessage::Informational(msg) => msg.text.clone(),
-                cc_core::messages::SystemMessage::ApiError(msg) => msg.error.clone(),
-                _ => String::new(),
-            };
-
-            RenderMessage::SystemError { error: text }
-        }
-        _ => RenderMessage::AssistantText { text: String::new() },
-    }
-}
+use crate::components::messages::converter::core_message_to_render_message;

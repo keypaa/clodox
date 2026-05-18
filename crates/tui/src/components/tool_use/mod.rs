@@ -5,3 +5,6 @@ pub mod write;
 pub mod edit;
 pub mod grep;
 pub mod glob;
+pub mod web_fetch;
+pub mod web_search;
+pub mod agent;

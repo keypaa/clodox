@@ -365,46 +365,70 @@ fn estimate_cost(usage: &cc_core::messages::Usage) -> f64 {
 
 fn format_tool_call_display(name: &str, input: &serde_json::Value) -> String {
     match name {
-        "bash" => {
+        "bash" | "Bash" => {
             if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
                 format!("bash: {cmd}")
             } else {
                 "bash".to_string()
             }
         }
-        "read" => {
+        "read" | "Read" => {
             if let Some(path) = input.get("file_path").and_then(|v| v.as_str()) {
+                format!("read: {path}")
+            } else if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
                 format!("read: {path}")
             } else {
                 "read".to_string()
             }
         }
-        "write" => {
+        "write" | "Write" => {
             if let Some(path) = input.get("file_path").and_then(|v| v.as_str()) {
                 format!("write: {path}")
             } else {
                 "write".to_string()
             }
         }
-        "edit" => {
+        "edit" | "Edit" => {
             if let Some(path) = input.get("file_path").and_then(|v| v.as_str()) {
                 format!("edit: {path}")
             } else {
                 "edit".to_string()
             }
         }
-        "grep" => {
+        "grep" | "Grep" => {
             if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
                 format!("grep: {pattern}")
             } else {
                 "grep".to_string()
             }
         }
-        "glob" => {
+        "glob" | "Glob" => {
             if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
                 format!("glob: {pattern}")
             } else {
                 "glob".to_string()
+            }
+        }
+        "web_fetch" | "WebFetch" => {
+            if let Some(url) = input.get("url").and_then(|v| v.as_str()) {
+                format!("web_fetch: {url}")
+            } else {
+                "web_fetch".to_string()
+            }
+        }
+        "web_search" | "WebSearch" => {
+            if let Some(query) = input.get("query").and_then(|v| v.as_str()) {
+                format!("web_search: {query}")
+            } else {
+                "web_search".to_string()
+            }
+        }
+        "agent" | "Agent" | "Task" => {
+            let desc = input.get("description").and_then(|v| v.as_str()).unwrap_or("agent");
+            let agent_type = input.get("subagent_type").and_then(|v| v.as_str());
+            match agent_type {
+                Some(atype) => format!("agent ({atype}): {desc}"),
+                None => format!("agent: {desc}"),
             }
         }
         _ => name.to_string(),
