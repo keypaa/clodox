@@ -19,3 +19,6 @@ uuid.workspace = true
 async-stream = "0.3"
 chrono.workspace = true
 rmcp.workspace = true
+
+[lints]
+workspace = true

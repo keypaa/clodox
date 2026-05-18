@@ -5,8 +5,7 @@ mod session;
 use clap::Parser;
 use cli_args::{Cli, Commands};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
@@ -23,7 +22,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Handle subcommands
     if let Some(ref command) = cli.command {
-        return handle_subcommand(command).await;
+        let rt = tokio::runtime::Runtime::new()?;
+        return rt.block_on(handle_subcommand(command));
     }
 
     // Determine interactive vs non-interactive
@@ -31,10 +31,11 @@ async fn main() -> anyhow::Result<()> {
 
     if is_non_interactive {
         // Non-interactive mode: print response and exit
-        handle_print_mode(&cli).await
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(handle_print_mode(&cli))
     } else {
-        // Interactive mode: launch REPL/TUI
-        handle_interactive_mode(&cli).await
+        // Interactive mode: launch REPL/TUI (no async runtime needed)
+        handle_interactive_mode(&cli)
     }
 }
 
@@ -209,7 +210,7 @@ async fn handle_print_mode(cli: &Cli) -> anyhow::Result<()> {
 }
 
 /// Handle interactive mode — launch the REPL/TUI.
-async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
+fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
     tracing::info!("Interactive mode");
 
     // Check if stdout is a TTY
@@ -249,9 +250,6 @@ async fn handle_interactive_mode(cli: &Cli) -> anyhow::Result<()> {
         let messages = session.read_messages()?;
         tracing::info!("Loaded {} previous messages", messages.len());
     }
-
-    // Set up graceful shutdown
-    let shutdown = session::GracefulShutdown::new();
 
     // Launch the TUI
     cc_tui::main_loop::run_tui()?;

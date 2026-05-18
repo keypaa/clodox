@@ -415,6 +415,21 @@ impl Themeable for LogoHeaderWidget<'_> {
         };
 
         let border_style = Style::default().fg(border_color);
+        let bg_style = Style::default().bg(ratatui::style::Color::Black);
+
+        // Clear the dialog area background first
+        for dx in 0..width {
+            for dy in 0..height {
+                let bx = dialog_area.x + dx;
+                let by = dialog_area.y + dy;
+                if bx >= buf.area.width || by >= buf.area.height {
+                    continue;
+                }
+                let cell = buf.cell_mut((bx, by)).unwrap();
+                cell.set_symbol(" ");
+                cell.set_style(bg_style);
+            }
+        }
 
         for dx in 0..width {
             for dy in 0..height {
@@ -444,7 +459,7 @@ impl Themeable for LogoHeaderWidget<'_> {
                 } else if dy == 0 || dy == height - 1 {
                     cell.set_symbol("─");
                     cell.set_style(border_style);
-                } else if dy == 0 {
+                } else if dy == 1 {
                     let title_start = 3;
                     let char_idx = dx as usize;
                     if char_idx >= title_start && char_idx < title_start + border_title.len() {
@@ -456,13 +471,13 @@ impl Themeable for LogoHeaderWidget<'_> {
                         cell.set_style(border_style);
                     }
                 } else {
-                    let content_idx = dy - 2;
+                    let content_idx = dy.saturating_sub(2);
                     if content_idx < lines.len() as u16 {
                         let line = &lines[content_idx as usize];
                         let mut char_idx = 0u16;
                         for span in &line.spans {
                             for ch in span.content.chars() {
-                                if char_idx + 2 < width {
+                                if char_idx + 3 < width {
                                     let cell_x = dialog_area.x + char_idx + 2;
                                     if cell_x < buf.area.width {
                                         if let Some(c) = buf.cell_mut((cell_x, by)) {

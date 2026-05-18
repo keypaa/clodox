@@ -35,3 +35,6 @@ lru = "0.12"
 
 # Time
 instant = "0.1"
+
+[lints]
+workspace = true

@@ -12,6 +12,7 @@ use crate::components::prompt_input::text_input::TextInputWidget;
 use crate::components::prompt_input::footer::{PromptFooter, PromptMode};
 use crate::components::prompt_input::autocomplete::{AutocompleteWidget, AutocompleteState};
 use crate::screens::logo_header::{LogoHeader, LogoHeaderWidget};
+use crate::screens::welcome::{WelcomeScreen, WelcomeWidget};
 
 const MAX_MESSAGES_REPL: usize = 200;
 
@@ -20,6 +21,7 @@ pub struct ReplScreen {
     messages: Vec<RenderMessage>,
     is_querying: bool,
     reduced_motion: bool,
+    welcome_screen: WelcomeScreen,
 }
 
 impl ReplScreen {
@@ -29,6 +31,7 @@ impl ReplScreen {
             messages: Vec::new(),
             is_querying: false,
             reduced_motion: false,
+            welcome_screen: WelcomeScreen::new(),
         }
     }
 
@@ -62,46 +65,61 @@ impl ReplScreen {
         let columns = area.width;
         let is_narrow = columns < 80;
 
+        let has_messages = !self.messages.is_empty();
+        let logo_height = if has_messages { 12 } else { 0 };
+
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(12),
+                Constraint::Length(logo_height),
                 Constraint::Min(3),
                 Constraint::Length(1),
                 Constraint::Length(4),
             ])
             .split(area);
 
-        let logo_header = LogoHeader::new();
-        let logo = LogoHeaderWidget::new(
-            &logo_header,
-            &self.theme,
-            columns,
-        );
-        frame.render_widget(logo, main_layout[0]);
+        let mut layout_idx = 0;
+
+        if has_messages {
+            let logo_header = LogoHeader::new();
+            let logo = LogoHeaderWidget::new(
+                &logo_header,
+                &self.theme,
+                columns,
+            );
+            frame.render_widget(logo, main_layout[layout_idx]);
+            layout_idx += 1;
+        } else {
+            // Show welcome dialog when no messages
+            let welcome_widget = WelcomeWidget::new(&self.welcome_screen, &self.theme);
+            frame.render_widget(welcome_widget, area);
+        }
 
         if !self.messages.is_empty() {
             render_messages(
                 frame,
-                main_layout[1],
+                main_layout[layout_idx],
                 &self.messages,
                 &self.theme,
                 None,
             );
+            layout_idx += 1;
         }
 
         if self.is_querying {
             let spinner = SpinnerWithVerb::new(self.reduced_motion)
                 .with_override_message("Requesting".to_string());
-            frame.render_widget(spinner, main_layout[2]);
+            frame.render_widget(spinner, main_layout[layout_idx]);
+            layout_idx += 1;
         } else {
             let idle = IdleStatus::new(self.reduced_motion);
-            frame.render_widget(idle, main_layout[2]);
+            frame.render_widget(idle, main_layout[layout_idx]);
+            layout_idx += 1;
         }
 
         self.render_prompt_input(
             frame,
-            main_layout[3],
+            main_layout[layout_idx],
             input_text,
             cursor_pos,
             autocomplete,
@@ -138,9 +156,14 @@ impl ReplScreen {
             .bg(self.theme.colors.text)
             .fg(self.theme.colors.user_message_background);
 
-        let cp = cursor_pos.min(input_text.len());
-        let before = &input_text[..cp];
-        let after = &input_text[cp..];
+        let cp = cursor_pos.min(input_text.chars().count());
+        let byte_idx = input_text
+            .char_indices()
+            .nth(cp)
+            .map(|(i, _)| i)
+            .unwrap_or(input_text.len());
+        let before = &input_text[..byte_idx];
+        let after = &input_text[byte_idx..];
 
         let input_line = Line::from(vec![
             Span::styled("› ", Style::default().fg(self.theme.colors.suggestion)),

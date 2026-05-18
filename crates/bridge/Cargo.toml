@@ -19,3 +19,6 @@ reqwest.workspace = true
 sha2 = "0.10"
 hmac = "0.12"
 base64 = "0.22"
+
+[lints]
+workspace = true

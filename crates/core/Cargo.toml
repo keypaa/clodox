@@ -17,3 +17,6 @@ tracing.workspace = true
 indexmap.workspace = true
 regex = "1"
 dirs = "5"
+
+[lints]
+workspace = true

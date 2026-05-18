@@ -19,3 +19,6 @@ chrono.workspace = true
 async-stream = "0.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "1"
+
+[lints]
+workspace = true
