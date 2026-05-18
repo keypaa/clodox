@@ -25,7 +25,7 @@ pub enum FullscreenMode {
 
 pub struct FullscreenScreen {
     theme: Theme,
-    mode: FullscreenMode,
+    pub mode: FullscreenMode,
     virtual_list: VirtualMessageList,
     is_querying: bool,
     reduced_motion: bool,

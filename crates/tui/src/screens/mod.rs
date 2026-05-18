@@ -12,4 +12,4 @@ pub use resume::{ResumePicker, ResumePickerWidget, ResumeAction, SessionEntry};
 pub use login::{LoginScreen, LoginScreenWidget, LoginAction};
 pub use logo_header::{LogoHeader, LogoHeaderWidget, LayoutMode, get_layout_mode};
 pub use repl::ReplScreen;
-pub use fullscreen::FullscreenScreen;
+pub use fullscreen::{FullscreenScreen, FullscreenMode};

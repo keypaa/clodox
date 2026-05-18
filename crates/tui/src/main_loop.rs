@@ -25,7 +25,7 @@ use crate::input::{InputAction, InputHandler};
 use crate::state::{create_state, write_state, SharedState};
 use crate::terminal::TerminalManager;
 use crate::theme::Theme;
-use crate::screens::{ReplScreen, FullscreenScreen};
+use crate::screens::{ReplScreen, FullscreenScreen, FullscreenMode};
 use crate::components::prompt_input::autocomplete::AutocompleteState;
 use crate::query_events::StreamingAccumulator;
 use crate::components::permissions::dialog::{PermissionAction, PermissionDialog, PermissionDialogWidget};
@@ -358,6 +358,12 @@ impl TuiApp {
                 }
             }
             InputAction::Cancel => {
+                if let ScreenMode::Fullscreen(screen) = &mut self.screen {
+                    if screen.mode != FullscreenMode::Chat {
+                        self.screen = ScreenMode::Fullscreen(FullscreenScreen::new(self.theme.clone()));
+                        return;
+                    }
+                }
                 self.input_buffer.clear();
                 self.cursor_position = 0;
                 self.autocomplete.dismiss();
