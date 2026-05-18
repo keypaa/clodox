@@ -9,7 +9,7 @@ use crossterm::{
         PushKeyboardEnhancementFlags,
     },
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen,
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
     ExecutableCommand,
@@ -117,6 +117,9 @@ impl TerminalManager {
 
         // Enter raw mode
         enable_raw_mode()?;
+
+        // Clear the screen to remove any leftover cargo output
+        stdout().execute(Clear(ClearType::All))?;
 
         // Enter alternate screen if in fullscreen mode
         if self.mode == TerminalMode::AltScreen {
