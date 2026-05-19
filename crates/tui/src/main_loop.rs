@@ -308,10 +308,20 @@ impl TuiApp {
                     self.autocomplete.dismiss();
 
                     if cc_commands::is_slash_command(&input) {
+                        let trimmed = input.trim().to_lowercase();
+                        if trimmed == "/exit" || trimmed == "/quit" || trimmed == "/q" {
+                            self.is_running = false;
+                            return;
+                        }
+
                         let registry = &self.command_registry;
                         let ctx = &self.command_context;
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        let result = rt.block_on(cc_commands::execute_command(registry, ctx, &input));
+                        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                            handle.block_on(cc_commands::execute_command(registry, ctx, &input))
+                        } else {
+                            let rt = tokio::runtime::Runtime::new().unwrap();
+                            rt.block_on(cc_commands::execute_command(registry, ctx, &input))
+                        };
                         match result {
                             cc_commands::CommandResult::Text { message, .. } => {
                                 self.pending_command_result = Some(message);
