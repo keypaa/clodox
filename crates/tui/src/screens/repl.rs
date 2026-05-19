@@ -131,8 +131,8 @@ impl ReplScreen {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(55),
-                Constraint::Percentage(45),
+                Constraint::Percentage(50), //55% originally
+                Constraint::Percentage(50), //45% originally
             ])
             .split(area);
 
@@ -212,9 +212,9 @@ impl ReplScreen {
         frame.render_widget(tips_block, right_layout[0]);
 
         let tips_content = vec![
-            Line::from(vec![Span::styled("Tips for getting started", tips_style)]),
+            Line::from(vec![Span::styled("  Tips for getting started", tips_style)]),
             Line::from(vec![Span::styled(
-                "Run /init to create a CLAUDE.md file with instruc...",
+                "  Run /init to create a CLAUDE.md file with instruc...",
                 dim_style,
             )]),
         ];
@@ -224,8 +224,8 @@ impl ReplScreen {
 
         // Recent activity chunk (no borders)
         let activity_content = vec![
-            Line::from(vec![Span::styled("Recent activity", tips_style)]),
-            Line::from(vec![Span::styled("No recent activity", dim_style)]),
+            Line::from(vec![Span::styled("  Recent activity", tips_style)]),
+            Line::from(vec![Span::styled("  No recent activity", dim_style)]),
         ];
 
         let activity_paragraph = Paragraph::new(activity_content);
