@@ -68,7 +68,7 @@ pub struct TuiApp {
     pub command_context: cc_commands::CommandContext,
     pub pending_command_result: Option<String>,
     pub tool_registry: ToolRegistry,
-    pub tokio_runtime: tokio::runtime::Runtime,
+    pub tokio_runtime: Option<tokio::runtime::Runtime>,
     pub query_event_rx: Option<mpsc::Receiver<Result<QueryEvent, cc_query::errors::QueryError>>>,
     pub query_task: Option<tokio::task::JoinHandle<()>>,
     pub abort_tx: Option<tokio::sync::watch::Sender<bool>>,
@@ -92,12 +92,12 @@ impl TuiApp {
 
         let tool_registry = ToolRegistry::default_registry();
 
-        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+        let tokio_runtime = Some(tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("query-worker")
             .enable_all()
             .build()
-            .expect("Failed to create tokio runtime");
+            .expect("Failed to create tokio runtime"));
 
         Ok(Self {
             terminal,
@@ -108,7 +108,7 @@ impl TuiApp {
             cursor_position: 0,
             is_running: true,
             screen,
-            autocomplete: AutocompleteState::new(),
+            autocomplete: AutocompleteState::default(),
             command_registry,
             command_context,
             pending_command_result: None,
@@ -168,6 +168,7 @@ impl TuiApp {
             })?;
         }
 
+        self.tokio_runtime.take();
         self.terminal.cleanup()?;
         Ok(())
     }
@@ -311,6 +312,7 @@ impl TuiApp {
                         let trimmed = input.trim().to_lowercase();
                         if trimmed == "/exit" || trimmed == "/quit" || trimmed == "/q" {
                             self.is_running = false;
+                            self.tokio_runtime.take();
                             return;
                         }
 
@@ -372,6 +374,7 @@ impl TuiApp {
             }
             InputAction::Exit => {
                 self.is_running = false;
+                self.tokio_runtime.take();
             }
             InputAction::AbortQuery => {
                 if let Some(tx) = &self.abort_tx {
@@ -531,7 +534,7 @@ impl TuiApp {
         let (event_tx, event_rx) = mpsc::channel(64);
         self.query_event_rx = Some(event_rx);
 
-        let handle = self.tokio_runtime.handle().clone();
+        let handle = self.tokio_runtime.as_ref().unwrap().handle().clone();
         let task = handle.spawn(async move {
             let mut query_engine = match QueryEngine::new(config, abort_rx) {
                 Ok(e) => e,
