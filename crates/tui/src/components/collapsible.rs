@@ -72,7 +72,7 @@ impl CollapsibleBlock {
                 let remaining = content_lines.len() - max_lines;
                 let hint = format!("  ... +{} more lines", remaining);
                 let _hint_style = Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM);
                 lines.push(Line::from(vec![Span::raw(hint)]));
             }
@@ -80,7 +80,7 @@ impl CollapsibleBlock {
             let preview: Vec<String> = self.content.lines().take(self.max_collapsed_lines).map(|l| l.to_string()).collect();
             if !preview.is_empty() {
                 let preview_style = Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM);
                 for line in preview {
                     let truncated = if line.len() > width as usize - 6 {
@@ -93,7 +93,7 @@ impl CollapsibleBlock {
                 if self.content.lines().count() > self.max_collapsed_lines {
                     let hint = format!("    ... +{} lines (Enter to expand)", self.content.lines().count() - self.max_collapsed_lines);
                     let _hint_style = Style::default()
-                        .fg(ratatui::style::Color::DarkGray)
+                        .fg(ratatui::style::Color::Rgb(177, 173, 161))
                         .add_modifier(Modifier::DIM);
                     lines.push(Line::from(vec![Span::raw(hint)]));
                 }

@@ -147,7 +147,7 @@ impl LoginScreen {
 
         if self.api_key_input.is_empty() {
             let placeholder_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             input_spans.push(Span::styled("sk-ant-...", placeholder_style));
             input_spans.push(Span::styled(
@@ -208,7 +208,7 @@ impl LoginScreen {
         }
 
         let help_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         lines.push(Line::from(vec![
             Span::styled(
@@ -229,7 +229,7 @@ impl LoginScreen {
             Span::styled("[enter] ", key_style),
             Span::styled("Submit", label_style),
             Span::raw("    "),
-            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)),
             Span::styled("Cancel", label_style),
         ]));
 

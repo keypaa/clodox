@@ -170,7 +170,7 @@ impl LogoHeader {
         lines.push(Line::from(vec![Span::raw("")]));
 
         let dim_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         lines.push(Line::from(vec![Span::styled(self.model_line().clone(), dim_style)]));
         lines.push(Line::from(vec![Span::styled(self.cwd_line().clone(), dim_style)]));
@@ -200,7 +200,7 @@ impl LogoHeader {
         let clawd_lines = self.render_clawd();
 
         let dim_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         let model_line = self.model_line();
         let cwd_line = self.cwd_line();
@@ -253,7 +253,7 @@ impl LogoHeader {
 
             let mut combined = left_spans;
             combined.push(Span::raw(" "));
-            combined.push(Span::styled("│", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM)));
+            combined.push(Span::styled("│", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::DIM)));
             combined.push(Span::raw(" "));
             combined.extend(right_spans);
 
@@ -298,7 +298,7 @@ impl LogoHeader {
         let separator = "─".repeat(max_width.min(30) as usize);
         lines.push(Line::from(vec![Span::styled(
             separator.clone(),
-            Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::DIM),
         )]));
 
         lines.push(Line::from(vec![Span::styled(
@@ -315,12 +315,12 @@ impl LogoHeader {
 
         lines.push(Line::from(vec![Span::styled(
             separator.clone(),
-            Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::DIM),
         )]));
 
         if self.recent_activity.is_empty() {
             let empty_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![Span::styled("No recent activity", empty_style)]));
         } else {
@@ -332,7 +332,7 @@ impl LogoHeader {
                     .fg(ratatui::style::Color::White)
                     .add_modifier(Modifier::DIM);
                 let time_style = Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM);
 
                 let max_summary = (max_width as usize).saturating_sub(12);
@@ -367,7 +367,7 @@ impl LogoHeader {
         let separator = "─".repeat(max_width.min(30) as usize);
         lines.push(Line::from(vec![Span::styled(
             separator,
-            Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::DIM),
         )]));
 
         for note in self.release_notes.iter().take(3) {
@@ -389,7 +389,7 @@ impl LogoHeader {
 
         if self.release_notes.is_empty() {
             let empty_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![Span::styled("Up to date", empty_style)]));
         }

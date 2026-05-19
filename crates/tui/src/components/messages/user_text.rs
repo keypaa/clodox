@@ -35,7 +35,7 @@ pub fn render_user_text(
     let pointer_color = if is_selected {
         Color::Blue
     } else {
-        Color::DarkGray
+        Color::Rgb(177, 173, 161)
     };
 
     let pointer = Span::styled(

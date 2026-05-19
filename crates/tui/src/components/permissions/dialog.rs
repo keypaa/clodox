@@ -131,7 +131,7 @@ impl PermissionDialog {
                 let remaining = preview_lines.len() - self.max_preview_lines;
                 let hint = format!("  ... +{} lines (ctrl+o to see all)", remaining);
                 let hint_style = Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM);
                 lines.push(Line::from(vec![Span::styled(hint, hint_style)]));
             }
@@ -143,7 +143,7 @@ impl PermissionDialog {
             .fg(risk_color)
             .add_modifier(Modifier::BOLD);
         lines.push(Line::from(vec![
-            Span::styled("Risk: ", Style::default().fg(ratatui::style::Color::DarkGray)),
+            Span::styled("Risk: ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161))),
             Span::styled(self.risk_label().to_string(), risk_style),
         ]));
 
@@ -168,7 +168,7 @@ impl PermissionDialog {
 
         button_spans.push(Span::styled("[n] ", Style::default().fg(ratatui::style::Color::Red).add_modifier(Modifier::BOLD)));
         button_spans.push(Span::styled("Deny  ", label_style));
-        button_spans.push(Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)));
+        button_spans.push(Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)));
         button_spans.push(Span::styled("Cancel", label_style));
 
         lines.push(Line::from(button_spans));

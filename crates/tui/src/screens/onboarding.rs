@@ -209,7 +209,7 @@ impl OnboardingScreen {
         lines.push(Line::from(vec![Span::raw("")]));
 
         let hint_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         lines.push(Line::from(vec![
             Span::styled("Press Enter to get started", hint_style),
@@ -245,7 +245,7 @@ impl OnboardingScreen {
         lines.push(Line::from(vec![Span::raw("")]));
 
         let or_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         lines.push(Line::from(vec![Span::styled("OR", or_style)]));
         lines.push(Line::from(vec![Span::raw("")]));
@@ -259,7 +259,7 @@ impl OnboardingScreen {
         lines.push(Line::from(vec![Span::raw("")]));
 
         let hint_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
         lines.push(Line::from(vec![
             Span::styled("Get your key at console.anthropic.com", hint_style),
@@ -277,7 +277,7 @@ impl OnboardingScreen {
             Span::styled("[enter] ", key_style),
             Span::styled("Continue", label_style),
             Span::raw("    "),
-            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)),
             Span::styled("Cancel", label_style),
         ]));
 
@@ -312,7 +312,7 @@ impl OnboardingScreen {
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM)
             };
             let name_style = if is_selected {
@@ -331,7 +331,7 @@ impl OnboardingScreen {
             ]));
 
             let detail_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![
                 Span::styled(format!("    {}", desc), detail_style),
@@ -354,7 +354,7 @@ impl OnboardingScreen {
             Span::styled("[↑↓] ", key_style),
             Span::styled("Navigate", label_style),
             Span::raw("    "),
-            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)),
             Span::styled("Cancel", label_style),
         ]));
 
@@ -389,7 +389,7 @@ impl OnboardingScreen {
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM)
             };
             let name_style = if is_selected {
@@ -408,7 +408,7 @@ impl OnboardingScreen {
             ]));
 
             let detail_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![
                 Span::styled(format!("    {}", desc), detail_style),
@@ -431,7 +431,7 @@ impl OnboardingScreen {
             Span::styled("[↑↓] ", key_style),
             Span::styled("Navigate", label_style),
             Span::raw("    "),
-            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)),
             Span::styled("Cancel", label_style),
         ]));
 

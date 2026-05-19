@@ -54,7 +54,7 @@ impl Themeable for BriefSpinner {
                 .fg(theme.color("inactive"))
                 .add_modifier(Modifier::DIM)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(Color::Rgb(177, 173, 161))
         };
 
         let span = Span::styled(String::from(char), style);

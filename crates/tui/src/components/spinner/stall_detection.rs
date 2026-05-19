@@ -92,7 +92,6 @@ fn color_to_rgb(color: Color) -> (u8, u8, u8) {
         Color::Magenta => (255, 0, 255),
         Color::Cyan => (0, 255, 255),
         Color::White => (255, 255, 255),
-        Color::DarkGray => (128, 128, 128),
         Color::LightRed => (255, 128, 128),
         Color::LightGreen => (128, 255, 128),
         Color::LightYellow => (255, 255, 128),

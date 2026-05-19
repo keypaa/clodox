@@ -104,7 +104,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
             spans.push(Span::styled(
                 "low",
                 Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM),
             ));
         }
@@ -116,7 +116,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
     spans.push(Span::styled(
         perm_label,
         Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM),
     ));
 
@@ -125,7 +125,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
         spans.push(Span::styled(
             "dirs",
             Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM),
         ));
     }
@@ -134,7 +134,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
     spans.push(Span::styled(
         "$0.00",
         Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM),
     ));
 
@@ -142,7 +142,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
         spans.push(Span::styled(
             format!("${:.2}", state.total_cost_usd),
             Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM),
         ));
     }
@@ -154,7 +154,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
         spans.push(Span::styled(
             format_tokens(total_input, total_output),
             Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM),
         ));
     }
@@ -177,7 +177,7 @@ fn build_status_spans(state: &AppState) -> Vec<Span<'static>> {
         spans.push(Span::styled(
             short_id,
             Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM),
         ));
     }

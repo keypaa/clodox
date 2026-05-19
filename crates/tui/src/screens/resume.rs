@@ -130,7 +130,7 @@ impl ResumePicker {
 
         if self.sessions.is_empty() {
             let empty_style = Style::default()
-                .fg(ratatui::style::Color::DarkGray)
+                .fg(ratatui::style::Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM);
             lines.push(Line::from(vec![
                 Span::styled("No previous sessions found.", empty_style),
@@ -151,7 +151,7 @@ impl ResumePicker {
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
-                        .fg(ratatui::style::Color::DarkGray)
+                        .fg(ratatui::style::Color::Rgb(177, 173, 161))
                         .add_modifier(Modifier::DIM)
                 };
 
@@ -170,7 +170,7 @@ impl ResumePicker {
                         .fg(ratatui::style::Color::Yellow)
                 } else {
                     Style::default()
-                        .fg(ratatui::style::Color::DarkGray)
+                        .fg(ratatui::style::Color::Rgb(177, 173, 161))
                         .add_modifier(Modifier::DIM)
                 };
 
@@ -191,7 +191,7 @@ impl ResumePicker {
 
             if self.sessions.len() > max_show {
                 let more_style = Style::default()
-                    .fg(ratatui::style::Color::DarkGray)
+                    .fg(ratatui::style::Color::Rgb(177, 173, 161))
                     .add_modifier(Modifier::DIM);
                 lines.push(Line::from(vec![
                     Span::styled(
@@ -218,7 +218,7 @@ impl ResumePicker {
             Span::styled("[n] ", key_style),
             Span::styled("New session", label_style),
             Span::raw("    "),
-            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Span::styled("[esc] ", Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::BOLD)),
             Span::styled("Cancel", label_style),
         ];
 

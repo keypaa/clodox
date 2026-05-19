@@ -60,7 +60,7 @@ impl ReplScreen {
         let columns = area.width;
         let is_narrow = columns < 80;
 
-        let accent_color = ratatui::style::Color::Rgb(255, 135, 0);
+        let accent_color = ratatui::style::Color::Rgb(193, 95, 60);
 
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -154,7 +154,7 @@ impl ReplScreen {
             .split(left_inner);
 
         // Build welcome text with separate colors
-        let alien_style = Style::default().fg(accent_color);
+        let alien_style = Style::default().fg(ratatui::style::Color::Rgb(255, 135, 0));
         let welcome_line_style = Style::default()
             .fg(ratatui::style::Color::White)
             .add_modifier(Modifier::BOLD);
@@ -183,7 +183,7 @@ impl ReplScreen {
         // Bottom info text with left padding
         let info_text = "  Sonnet 4.6 · Claude Pro · Organization\n            ~/GitHub/simplespace";
         let info_paragraph = Paragraph::new(info_text)
-            .style(Style::default().fg(ratatui::style::Color::DarkGray).add_modifier(Modifier::DIM));
+            .style(Style::default().fg(ratatui::style::Color::Rgb(177, 173, 161)).add_modifier(Modifier::DIM));
         frame.render_widget(info_paragraph, left_sub_layout[1]);
 
         // Right chunk split vertically
@@ -196,7 +196,7 @@ impl ReplScreen {
             .split(layout[1]);
 
         let dim_style = Style::default()
-            .fg(ratatui::style::Color::DarkGray)
+            .fg(ratatui::style::Color::Rgb(177, 173, 161))
             .add_modifier(Modifier::DIM);
 
         let tips_style = Style::default()

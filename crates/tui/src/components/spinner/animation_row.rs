@@ -37,7 +37,7 @@ impl SpinnerAnimationRow {
 
     fn dot_color(&self) -> Color {
         match self.state {
-            SpinnerState::Unresolved => Color::DarkGray,
+            SpinnerState::Unresolved => Color::Rgb(177, 173, 161),
             SpinnerState::Resolved => Color::Green,
             SpinnerState::Errored => Color::Red,
         }
@@ -74,7 +74,7 @@ impl Themeable for SpinnerAnimationRow {
             Style::default().fg(self.dot_color())
         } else {
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(Color::Rgb(177, 173, 161))
                 .add_modifier(Modifier::DIM)
         };
 
