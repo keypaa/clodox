@@ -168,7 +168,7 @@ impl TuiApp {
             })?;
         }
 
-        self.tokio_runtime.take();
+        std::mem::forget(self.tokio_runtime.take());
         self.terminal.cleanup()?;
         Ok(())
     }
@@ -312,7 +312,7 @@ impl TuiApp {
                         let trimmed = input.trim().to_lowercase();
                         if trimmed == "/exit" || trimmed == "/quit" || trimmed == "/q" {
                             self.is_running = false;
-                            self.tokio_runtime.take();
+                            std::mem::forget(self.tokio_runtime.take());
                             return;
                         }
 
@@ -374,7 +374,7 @@ impl TuiApp {
             }
             InputAction::Exit => {
                 self.is_running = false;
-                self.tokio_runtime.take();
+                std::mem::forget(self.tokio_runtime.take());
             }
             InputAction::AbortQuery => {
                 if let Some(tx) = &self.abort_tx {
