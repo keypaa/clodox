@@ -318,8 +318,13 @@ impl TuiApp {
 
                         let registry = &self.command_registry;
                         let ctx = &self.command_context;
-                        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                            handle.block_on(cc_commands::execute_command(registry, ctx, &input))
+                        let result = if tokio::runtime::Handle::try_current().is_ok() {
+                            tokio::task::block_in_place(|| {
+                                let rt = tokio::runtime::Builder::new_current_thread()
+                                    .build()
+                                    .expect("Failed to create runtime");
+                                rt.block_on(cc_commands::execute_command(registry, ctx, &input))
+                            })
                         } else {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             rt.block_on(cc_commands::execute_command(registry, ctx, &input))
