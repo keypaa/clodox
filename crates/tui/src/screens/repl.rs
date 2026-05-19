@@ -252,7 +252,7 @@ impl ReplScreen {
 
         let border_line = "─".repeat(area.width as usize);
         let border = Paragraph::new(border_line).style(
-            Style::default().fg(self.theme.colors.prompt_border),
+            Style::default().fg(self.theme.colors.inactive).add_modifier(Modifier::DIM),
         );
         frame.render_widget(border, input_layout[0]);
 
@@ -270,8 +270,12 @@ impl ReplScreen {
         let before = &input_text[..byte_idx];
         let after = &input_text[byte_idx..];
 
+        let arrow_style = Style::default()
+            .fg(ratatui::style::Color::White)
+            .add_modifier(Modifier::BOLD);
+
         let input_line = Line::from(vec![
-            Span::styled("› ", Style::default().fg(self.theme.colors.suggestion)),
+            Span::styled("› ", arrow_style),
             Span::raw(before),
             Span::styled(cursor_char, cursor_style),
             Span::raw(after),
