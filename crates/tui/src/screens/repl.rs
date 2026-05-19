@@ -261,9 +261,14 @@ impl ReplScreen {
             .bg(self.theme.colors.text)
             .fg(self.theme.colors.user_message_background);
 
-        let cp = cursor_pos.min(input_text.len());
-        let before = &input_text[..cp];
-        let after = &input_text[cp..];
+        let cp = cursor_pos.min(input_text.chars().count());
+        let byte_idx = input_text
+            .char_indices()
+            .nth(cp)
+            .map(|(i, _)| i)
+            .unwrap_or(input_text.len());
+        let before = &input_text[..byte_idx];
+        let after = &input_text[byte_idx..];
 
         let input_line = Line::from(vec![
             Span::styled("› ", Style::default().fg(self.theme.colors.suggestion)),
